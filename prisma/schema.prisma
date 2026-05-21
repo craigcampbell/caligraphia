@@ -1,0 +1,128 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id          String   @id @default(uuid()) @db.Uuid
+  username    String   @unique
+  email       String   @unique
+  nomDePlume  String?  @map("nom_de_plume")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  posts        Post[]
+  interactions PostInteraction[]
+  scratches    Scratch[]
+  flags        Flag[]
+  groups       Group[]
+
+  followers  UserFollow[] @relation("following")
+  following  UserFollow[] @relation("follower")
+
+  @@map("users")
+}
+
+model UserFollow {
+  followerId  String   @map("follower_id") @db.Uuid
+  followingId String   @map("following_id") @db.Uuid
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  follower  User @relation("follower", fields: [followerId], references: [id], onDelete: Cascade)
+  following User @relation("following", fields: [followingId], references: [id], onDelete: Cascade)
+
+  @@id([followerId, followingId])
+  @@map("user_follows")
+}
+
+enum PostType {
+  canvas
+  photo
+}
+
+model Post {
+  id                 String    @id @default(uuid()) @db.Uuid
+  userId             String    @map("user_id") @db.Uuid
+  postType           PostType  @map("post_type")
+  canvasStrokeData   Json?     @map("canvas_stroke_data")
+  finalImageUrl      String?   @map("final_image_url")
+  uploadedPhotoUrl   String?   @map("uploaded_photo_url")
+  ocrText            String?   @map("ocr_text")
+  ocrHashtags        String[]  @map("ocr_hashtags")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  deletedAt          DateTime? @map("deleted_at")
+
+  user         User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  interactions PostInteraction[]
+  scratches    Scratch[]
+  flags        Flag[]
+
+  @@map("posts")
+}
+
+enum InteractionType {
+  like
+  dislike
+}
+
+model PostInteraction {
+  postId          String          @map("post_id") @db.Uuid
+  userId          String          @map("user_id") @db.Uuid
+  interactionType InteractionType @map("interaction_type")
+  createdAt       DateTime        @default(now()) @map("created_at")
+
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([postId, userId])
+  @@map("post_interactions")
+}
+
+model Scratch {
+  id               String   @id @default(uuid()) @db.Uuid
+  parentPostId     String   @map("parent_post_id") @db.Uuid
+  userId           String   @map("user_id") @db.Uuid
+  scratchSvgData   String   @map("scratch_svg_data")
+  compositeImageUrl String? @map("composite_image_url")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  parentPost Post @relation(fields: [parentPostId], references: [id], onDelete: Cascade)
+  user       User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("scratches")
+}
+
+model Group {
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String
+  creatorId   String   @map("creator_id") @db.Uuid
+  tagPattern  String   @map("tag_pattern")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  creator User @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+
+  @@map("groups")
+}
+
+enum FlagReason {
+  slop
+  automated
+  hateful
+  other
+}
+
+model Flag {
+  id        String     @id @default(uuid()) @db.Uuid
+  postId    String     @map("post_id") @db.Uuid
+  userId    String     @map("user_id") @db.Uuid
+  reason    FlagReason
+  createdAt DateTime   @default(now()) @map("created_at")
+
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("flags")
+}

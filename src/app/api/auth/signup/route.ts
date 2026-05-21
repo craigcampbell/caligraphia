@@ -1,0 +1,97 @@
+import { NextResponse } from "next/server";
+import { verifyMagicToken, setSessionCookie } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
+import { uploadBuffer, getPublicUrl } from "@/lib/storage";
+import { enforceNoTextInput } from "@/lib/no-text-input";
+import { v4 as uuidv4 } from "uuid";
+
+export async function POST(request: Request) {
+  try {
+    const formData = await request.formData();
+
+    const signupToken = formData.get("signupToken") as string;
+    const username = formData.get("username") as string;
+    const nomDePlumeFile = formData.get("nomDePlume") as File | null;
+
+    const bodyObj: Record<string, unknown> = { signupToken, username };
+    enforceNoTextInput(bodyObj);
+
+    if (!signupToken || !username) {
+      return NextResponse.json(
+        { error: "signupToken and username are required" },
+        { status: 400 }
+      );
+    }
+
+    let payload;
+    try {
+      payload = verifyMagicToken(signupToken);
+    } catch {
+      return NextResponse.json(
+        { error: "Invalid or expired signup token" },
+        { status: 401 }
+      );
+    }
+
+    const usernameTrimmed = username.trim();
+    if (usernameTrimmed.length < 2 || usernameTrimmed.length > 30) {
+      return NextResponse.json(
+        { error: "Username must be between 2 and 30 characters" },
+        { status: 400 }
+      );
+    }
+
+    if (!/^[a-zA-Z0-9_-]+$/.test(usernameTrimmed)) {
+      return NextResponse.json(
+        { error: "Username can only contain letters, numbers, hyphens, and underscores" },
+        { status: 400 }
+      );
+    }
+
+    const existing = await prisma.user.findUnique({
+      where: { username: usernameTrimmed },
+    });
+    if (existing) {
+      return NextResponse.json(
+        { error: "Username is already taken" },
+        { status: 409 }
+      );
+    }
+
+    let nomDePlumeUrl: string | null = null;
+
+    if (nomDePlumeFile && nomDePlumeFile.size > 0) {
+      const buffer = Buffer.from(await nomDePlumeFile.arrayBuffer());
+      const ext = nomDePlumeFile.name.split(".").pop() || "png";
+      const key = `nom-de-plume/${uuidv4()}.${ext}`;
+      await uploadBuffer(key, buffer, nomDePlumeFile.type || "image/png");
+      nomDePlumeUrl = getPublicUrl(key);
+    }
+
+    const user = await prisma.user.create({
+      data: {
+        username: usernameTrimmed,
+        email: payload.email,
+        nomDePlume: nomDePlumeUrl,
+      },
+    });
+
+    await setSessionCookie({
+      userId: user.id,
+      username: user.username,
+    });
+
+    return NextResponse.json({
+      user: {
+        id: user.id,
+        username: user.username,
+        nomDePlume: user.nomDePlume,
+        createdAt: user.createdAt,
+      },
+    });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Internal error";
+    const status = message.includes("not allowed") ? 400 : 500;
+    return NextResponse.json({ error: message }, { status });
+  }
+}
