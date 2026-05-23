@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
-import { useEffect, Suspense } from "react";
+import { useEffect } from "react";
 
 function LoginContent() {
   const { user, login } = useAuth();
@@ -14,16 +14,11 @@ function LoginContent() {
   const [error, setError] = useState("");
   const [magicLink, setMagicLink] = useState("");
 
-  useEffect(() => {
-    if (user) {
-      router.push("/");
-    }
-  }, [user, router]);
+  useEffect(() => { if (user) router.push("/"); }, [user, router]);
 
   useEffect(() => {
     const token = searchParams.get("token");
     if (!token) return;
-
     (async () => {
       try {
         const res = await fetch("/api/auth/verify-magic-link", {
@@ -32,182 +27,116 @@ function LoginContent() {
           body: JSON.stringify({ token }),
         });
         const data = await res.json();
-
-        if (!res.ok) {
-          setError(data.error || "Invalid link");
-          return;
-        }
-
+        if (!res.ok) { setError(data.error || "Invalid link"); return; }
         if (data.needsSignup) {
           router.push(`/signup?signupToken=${encodeURIComponent(data.signupToken)}`);
         } else {
           router.push("/");
         }
-      } catch {
-        setError("Something went wrong");
-      }
+      } catch { setError("Something went wrong"); }
     })();
   }, [searchParams, router]);
 
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email || !email.includes("@")) {
-      setError("Please enter a valid email address");
-      return;
-    }
+    if (!email || !email.includes("@")) { setError("Please enter a valid email address"); return; }
     setError("");
-
     const result = await login(email);
-    if (result.error) {
-      setError(result.error);
-    } else {
-      setSent(true);
-      if (result.magicLink) {
-        setMagicLink(result.magicLink);
-      }
-    }
+    if (result.error) { setError(result.error); }
+    else { setSent(true); if (result.magicLink) setMagicLink(result.magicLink); }
   };
 
   if (user) return null;
 
   return (
     <div className="login-page">
+      <div className="ink-splat ink-splat-1" />
+      <div className="ink-splat ink-splat-2" />
+      <div className="ink-splat ink-splat-3" />
+
       <div className="login-card">
+        <div className="brand-mark">&#9998;</div>
         <h1 className="login-title">Caligraphia</h1>
         <p className="login-subtitle">
-          A place for handwriting. No typing, no pasting, no bots.
+          Where handwriting lives. No keyboards. No copypasta. No bots.
         </p>
 
         {sent ? (
           <div className="login-sent">
             <div className="sent-icon">&#9993;</div>
             <p>Magic link sent to <strong>{email}</strong></p>
-            <p className="sent-hint">Check the link below (dev mode):</p>
-            <a href={magicLink} className="magic-link">
-              {magicLink}
-            </a>
+            <p className="sent-hint">Dev mode — use the link below:</p>
+            <a href={magicLink} className="magic-link">{magicLink}</a>
           </div>
         ) : (
           <form onSubmit={handleSend} className="login-form">
-            <label className="input-label" htmlFor="login-email">
-              Email address
-            </label>
+            <label className="input-label" htmlFor="login-email">Email address</label>
             <input
-              id="login-email"
-              name="login-email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@example.com"
-              className="email-input"
-              autoFocus
-              data-allow-text="true"
+              id="login-email" name="login-email" type="email"
+              value={email} onChange={(e) => setEmail(e.target.value)}
+              placeholder="you@example.com" className="email-input"
+              autoFocus data-allow-text="true"
             />
             {error && <p className="error-msg">{error}</p>}
-            <button type="submit" className="btn-send">
-              Send Magic Link
-            </button>
+            <button type="submit" className="btn-send">Send Magic Link</button>
           </form>
         )}
       </div>
 
       <style>{`
         .login-page {
-          min-height: 100vh;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          background: #fafafa;
-          padding: 16px;
+          min-height: 100vh; display: flex; align-items: center; justify-content: center;
+          padding: 16px; position: relative; overflow: hidden;
+          background: linear-gradient(170deg, #fefcf8 0%, #f5efe0 40%, #faf4ec 100%);
         }
+        .ink-splat {
+          position: absolute; border-radius: 50%; pointer-events: none; z-index: 0;
+          filter: blur(60px); opacity: 0.18;
+        }
+        .ink-splat-1 { width: 340px; height: 340px; background: radial-gradient(circle, #c0392b, #e74c3c, transparent); top: -60px; left: 10%; }
+        .ink-splat-2 { width: 260px; height: 260px; background: radial-gradient(circle, #8e44ad, #9b59b6, transparent); bottom: -40px; right: 15%; }
+        .ink-splat-3 { width: 200px; height: 200px; background: radial-gradient(circle, #2471a3, #3498db, transparent); top: 40%; left: 70%; }
         .login-card {
-          background: #fff;
-          border: 1px solid #e8e8e8;
-          border-radius: 16px;
-          padding: 48px 40px;
-          max-width: 420px;
-          width: 100%;
-          text-align: center;
+          background: #fffef9; border: 1px solid #e0d5c0; border-radius: 20px;
+          padding: 52px 44px; max-width: 430px; width: 100%; text-align: center;
+          position: relative; z-index: 1;
+          box-shadow: 0 4px 32px rgba(80,40,20,0.08), 0 1px 6px rgba(0,0,0,0.04);
         }
+        .brand-mark { font-size: 52px; margin-bottom: 8px; }
+        .brand-mark span { color: #c0392b; }
         .login-title {
-          font-size: 32px;
-          font-weight: 700;
-          font-style: italic;
+          font-size: 34px; font-weight: 700; margin-bottom: 6px;
+          background: linear-gradient(135deg, #1a1a2e, #8e44ad, #c0392b);
+          -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
           letter-spacing: -1px;
-          margin-bottom: 8px;
         }
-        .login-subtitle {
-          color: #888;
-          font-size: 15px;
-          margin-bottom: 32px;
-        }
-        .login-form {
-          display: flex;
-          flex-direction: column;
-          gap: 12px;
-        }
-        .input-label {
-          text-align: left;
-          font-size: 14px;
-          font-weight: 500;
-          color: #555;
-        }
+        .login-subtitle { color: #8c7a60; font-size: 14px; margin-bottom: 28px; font-style: italic; }
+        .login-form { display: flex; flex-direction: column; gap: 12px; }
+        .input-label { text-align: left; font-size: 13px; font-weight: 500; color: #6b5c40; }
         .email-input {
-          padding: 12px 16px;
-          border: 2px solid #ddd;
-          border-radius: 10px;
-          font-size: 16px;
-          font-family: inherit;
-          outline: none;
-          user-select: text;
-          -webkit-user-select: text;
+          padding: 14px 16px; border: 2px solid #d8cfb8; border-radius: 12px;
+          font-size: 15px; font-family: inherit; outline: none; background: #fefdf9;
+          user-select: text; -webkit-user-select: text;
         }
-        .email-input:focus {
-          border-color: #111;
-        }
+        .email-input:focus { border-color: #8b4513; }
         .btn-send {
-          margin-top: 8px;
-          padding: 14px;
-          background: #111;
-          color: #fff;
-          border: none;
-          border-radius: 10px;
-          font-size: 16px;
-          font-weight: 600;
-          cursor: pointer;
-          font-family: inherit;
+          margin-top: 8px; padding: 15px;
+          background: linear-gradient(135deg, #2c3e50, #8e44ad);
+          color: #fff; border: none; border-radius: 12px;
+          font-size: 16px; font-weight: 600; cursor: pointer;
+          font-family: inherit; box-shadow: 0 4px 16px rgba(142,68,173,0.25);
+          transition: transform 0.15s, box-shadow 0.15s;
         }
-        .btn-send:hover {
-          background: #333;
-        }
-        .error-msg {
-          color: #e53e3e;
-          font-size: 14px;
-          text-align: left;
-        }
-        .login-sent {
-          padding: 20px 0;
-        }
-        .sent-icon {
-          font-size: 48px;
-          margin-bottom: 16px;
-        }
-        .sent-hint {
-          color: #888;
-          font-size: 13px;
-          margin-top: 12px;
-          margin-bottom: 8px;
-        }
+        .btn-send:hover { transform: translateY(-1px); box-shadow: 0 6px 24px rgba(142,68,173,0.35); }
+        .error-msg { color: #c0392b; font-size: 13px; text-align: left; }
+        .login-sent { padding: 20px 0; }
+        .sent-icon { font-size: 44px; margin-bottom: 14px; }
+        .sent-hint { color: #a09080; font-size: 12px; margin-top: 12px; margin-bottom: 6px; }
         .magic-link {
-          display: block;
-          color: #3182ce;
-          font-size: 13px;
-          word-break: break-all;
-          padding: 8px;
-          background: #ebf8ff;
-          border-radius: 6px;
-          margin-top: 8px;
+          display: block; color: #2471a3; font-size: 12px; word-break: break-all;
+          padding: 8px 12px; background: #eef6fb; border-radius: 8px; margin-top: 8px;
         }
+        .brand-mark { color: #c0392b; }
       `}</style>
     </div>
   );
@@ -215,7 +144,7 @@ function LoginContent() {
 
 export default function LoginPage() {
   return (
-    <Suspense fallback={<div className="loading-screen"><div className="spinner" /><style>{`.loading-screen{display:flex;align-items:center;justify-content:center;min-height:100vh}.spinner{width:32px;height:32px;border:3px solid #e0e0e0;border-top-color:#333;border-radius:50%;animation:spin 0.8s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}`}</style></div>}>
+    <Suspense fallback={<div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:"#faf7f0"}}><div style={{width:32,height:32,border:"3px solid #ddd",borderTopColor:"#8e44ad",borderRadius:"50%",animation:"spin 0.8s linear infinite"}} /></div>}>
       <LoginContent />
     </Suspense>
   );

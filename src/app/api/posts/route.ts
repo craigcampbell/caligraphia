@@ -127,9 +127,11 @@ async function handleCanvasPost(request: Request, session: { userId: string; use
   validateCanvasPost(body);
 
   const strokeData = body.canvas_stroke_data as StrokePoint[];
+  const paper = (body.paper as string) || "blank";
+  const inkStyle = (body.ink_style as string) || "standard";
 
   const sharp = (await import("sharp")).default;
-  const pngBuffer = await renderCanvasToPng(strokeData);
+  const pngBuffer = await renderCanvasToPng(strokeData, paper, inkStyle);
   const compressedBuffer = await sharp(pngBuffer).png({ quality: 85 }).toBuffer();
 
   const imageKey = `posts/${uuidv4()}.png`;

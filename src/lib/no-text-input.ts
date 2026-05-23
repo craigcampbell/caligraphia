@@ -13,6 +13,8 @@ const ALLOWED_STRING_FIELDS = new Set([
   "interaction_type",
   "post_type",
   "color",
+  "ink_style",
+  "paper",
 ]);
 
 const FORBIDDEN_FIELD_PATTERNS = [

@@ -5,7 +5,7 @@ const MIN_DRAW_TIME_MS = 15_000;
 export function validateCanvasPost(body: Record<string, unknown>): void {
   enforceNoTextInput(body);
 
-  const { canvas_stroke_data } = body as {
+  const { canvas_stroke_data, drawing_duration_ms } = body as {
     canvas_stroke_data?: Array<{
       time: number;
       x: number;
@@ -13,25 +13,30 @@ export function validateCanvasPost(body: Record<string, unknown>): void {
       pressure: number;
       color?: string;
     }>;
+    drawing_duration_ms?: number;
   };
 
   if (!canvas_stroke_data || !Array.isArray(canvas_stroke_data)) {
     throw new Error("canvas_stroke_data must be an array of stroke points");
   }
 
-  if (canvas_stroke_data.length < 2) {
-    throw new Error("Drawing must contain at least 2 points");
+  if (canvas_stroke_data.length < 1) {
+    throw new Error("Drawing must contain at least 1 point");
   }
 
   const times = canvas_stroke_data.map((p) => p.time);
   const minTime = Math.min(...times);
   const maxTime = Math.max(...times);
-  const drawDuration = maxTime - minTime;
+  const strokeSpan = maxTime - minTime;
+  const wallDuration =
+    typeof drawing_duration_ms === "number" ? drawing_duration_ms : strokeSpan;
 
-  if (drawDuration < MIN_DRAW_TIME_MS) {
+  const effectiveDuration = Math.max(strokeSpan, wallDuration);
+
+  if (effectiveDuration < MIN_DRAW_TIME_MS) {
     throw new Error(
       `Drawing must span at least ${MIN_DRAW_TIME_MS / 1000} seconds. ` +
-        `Your drawing was only ${(drawDuration / 1000).toFixed(1)} seconds.`
+        `Your drawing was only ${(effectiveDuration / 1000).toFixed(1)} seconds.`
     );
   }
 
