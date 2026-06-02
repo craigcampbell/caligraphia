@@ -92,12 +92,17 @@ export default function UserProfilePage() {
           </div>
 
           {!isSelf && (
-            <button
-              onClick={toggleFollow}
-              className={`follow-btn ${isFollowing ? "following" : ""}`}
-            >
-              {isFollowing ? "Unfollow" : "Follow"}
-            </button>
+            <div className="profile-actions">
+              <button
+                onClick={toggleFollow}
+                className={`follow-btn ${isFollowing ? "following" : ""}`}
+              >
+                {isFollowing ? "Unfollow" : "Follow"}
+              </button>
+              <a href={`/post/new?send_to=${id}`} className="send-letter-btn">
+                &#9998; Send a Letter
+              </a>
+            </div>
           )}
         </div>
 
@@ -155,9 +160,15 @@ export default function UserProfilePage() {
           font-size: 14px;
           color: #888;
         }
+        .profile-actions {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+          align-items: flex-end;
+        }
         .follow-btn {
           padding: 10px 24px;
-          background: #111;
+          background: #2c2416;
           color: #fff;
           border: none;
           border-radius: 8px;
@@ -165,6 +176,7 @@ export default function UserProfilePage() {
           cursor: pointer;
           font-family: inherit;
           font-size: 14px;
+          transition: all 0.15s;
         }
         .follow-btn.following {
           background: #fff;
@@ -172,7 +184,25 @@ export default function UserProfilePage() {
           border: 1px solid #ddd;
         }
         .follow-btn:hover {
-          opacity: 0.9;
+          opacity: 0.85;
+        }
+        .send-letter-btn {
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+          padding: 8px 18px;
+          background: linear-gradient(135deg, #2c3e50, #c0392b);
+          color: #fff;
+          border-radius: 20px;
+          font-size: 13px;
+          font-weight: 600;
+          text-decoration: none;
+          font-family: inherit;
+          transition: transform 0.15s, box-shadow 0.15s;
+        }
+        .send-letter-btn:hover {
+          transform: translateY(-1px);
+          box-shadow: 0 4px 12px rgba(192,57,43,0.25);
         }
       `}</style>
     </AuthGuard>

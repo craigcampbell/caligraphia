@@ -13,10 +13,10 @@ export default function HomePage() {
         <div className="home-hero">
           <div className="ink-blot ink-blot-1" />
           <div className="ink-blot ink-blot-2" />
-          <h1 className="home-title">Your handwriting,<br />your voice.</h1>
-          <p className="home-sub">Every post is drawn by hand. No typing. No pasting.</p>
+          <h1 className="home-title">The Postbox</h1>
+          <p className="home-sub">Handwritten sketches, delivered to your screen.</p>
           <Link href="/post/new" className="home-cta">
-            <span className="cta-icon">&#9998;</span> Create a Post
+            <span className="cta-icon">&#9998;</span> Pen a Letter
           </Link>
         </div>
         <Feed />
@@ -28,7 +28,7 @@ export default function HomePage() {
           }
           .home-hero {
             text-align: center;
-            padding: 48px 16px 36px;
+            padding: 40px 16px 28px;
             position: relative;
             overflow: hidden;
             background: linear-gradient(180deg, #fefdf9 0%, #faf7f0 100%);
@@ -49,20 +49,20 @@ export default function HomePage() {
             bottom: -40px; right: -20px;
           }
           .home-title {
-            font-size: 36px; font-weight: 700; line-height: 1.2; position: relative; z-index: 1;
+            font-size: 32px; font-weight: 700; line-height: 1.2; position: relative; z-index: 1;
             background: linear-gradient(135deg, #1a1a2e, #8e44ad, #c0392b, #d35400);
             -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
-            margin-bottom: 10px;
+            margin-bottom: 6px;
           }
           .home-sub {
-            font-size: 15px; color: #8c7a60; font-style: italic; position: relative; z-index: 1;
-            margin-bottom: 20px;
+            font-size: 14px; color: #8c7a60; font-style: italic; position: relative; z-index: 1;
+            margin-bottom: 16px;
           }
           .home-cta {
             display: inline-flex; align-items: center; gap: 8px;
-            padding: 14px 32px;
+            padding: 12px 28px;
             background: linear-gradient(135deg, #2c3e50, #c0392b);
-            color: #fff; border-radius: 28px; font-weight: 700; font-size: 16px;
+            color: #fff; border-radius: 28px; font-weight: 700; font-size: 15px;
             position: relative; z-index: 1;
             box-shadow: 0 4px 20px rgba(192,57,43,0.25);
             transition: transform 0.15s, box-shadow 0.15s;
@@ -71,7 +71,7 @@ export default function HomePage() {
             transform: translateY(-2px);
             box-shadow: 0 8px 30px rgba(192,57,43,0.35);
           }
-          .cta-icon { font-size: 20px; }
+          .cta-icon { font-size: 18px; }
         `}</style>
       </main>
     </AuthGuard>

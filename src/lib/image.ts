@@ -11,7 +11,7 @@ export interface StrokePoint {
 const CANVAS_WIDTH = 2400;
 const CANVAS_HEIGHT = 3200;
 
-type PaperId = "blank" | "ruled" | "graph" | "watercolor" | "vellum";
+type PaperId = "blank" | "ruled" | "graph" | "watercolor" | "vellum" | "midnight";
 type InkId = "standard" | "runny" | "quill" | "calligraphy";
 
 function drawPaper(ctx: any, paper: PaperId) {
@@ -65,6 +65,19 @@ function drawPaper(ctx: any, paper: PaperId) {
         ctx.fillStyle = `rgba(160,130,100,${Math.random() * 0.06})`; ctx.fill();
       }
       break;
+    case "midnight":
+      ctx.fillStyle = "#0d0d1a"; ctx.fillRect(0, 0, w, h);
+      {
+        const sd = ctx.getImageData(0, 0, w, h);
+        for (let i = 0; i < sd.data.length; i += 4) {
+          if (Math.random() < 0.0005) {
+            sd.data[i] = 255; sd.data[i+1] = 255;
+            sd.data[i+2] = 255; sd.data[i+3] = 40 + Math.random() * 80;
+          }
+        }
+        ctx.putImageData(sd, 0, 0);
+      }
+      break;
     default:
       ctx.fillStyle = "#ffffff"; ctx.fillRect(0, 0, w, h);
       break;
@@ -77,55 +90,55 @@ function ri(): number { _seed = (_seed * 16807 + 0) % 2147483647; return (_seed 
 function renderSegment(ctx: any, ink: InkId, x1: number, y1: number, x2: number, y2: number, p1: number, p2: number, color: string) {
   const dx = x2 - x1;
   const dy = y2 - y1;
+  const dist = Math.sqrt(dx * dx + dy * dy);
   const angle = Math.atan2(dy, dx);
+  const speed = dist;
 
+  let baseW: number;
+  let alpha: number;
   if (ink === "runny") {
-    const baseW = Math.max(2, (p1 + p2) / 2 * 10);
-    ctx.beginPath();
-    ctx.moveTo(x1 + ri() * 8 - 4, y1 + ri() * 8 - 4);
-    ctx.lineTo(x2 + ri() * 8 - 4, y2 + ri() * 8 - 4);
-    ctx.strokeStyle = color; ctx.lineWidth = baseW; ctx.lineCap = "round"; ctx.lineJoin = "round";
-    ctx.globalAlpha = 0.7 + ri() * 0.3; ctx.stroke(); ctx.globalAlpha = 1;
-
-    for (let i = 0; i < 3; i++) {
-      if (ri() > 0.55) {
-        ctx.beginPath();
-        ctx.arc(x1 + dx * ri() + (ri() - 0.5) * 30, y1 + dy * ri() + (ri() - 0.5) * 30, ri() * 4 + 1, 0, Math.PI * 2);
-        ctx.fillStyle = color; ctx.globalAlpha = ri() * 0.5; ctx.fill(); ctx.globalAlpha = 1;
-      }
-    }
+    baseW = Math.max(2, (p1 + p2) / 2 * 10);
+    alpha = 0.7 + ri() * 0.3;
   } else if (ink === "quill") {
-    const wobble = (ri() - 0.5) * 3;
-    const baseW = Math.max(1.2, (p1 + p2) / 2 * 5);
-    ctx.beginPath();
-    ctx.moveTo(x1 + wobble, y1 + wobble);
-    ctx.lineTo(x2 + wobble, y2 + wobble);
-    ctx.strokeStyle = color; ctx.lineWidth = baseW; ctx.lineCap = "round";
-    ctx.globalAlpha = 0.75 + ri() * 0.25; ctx.stroke();
-
-    if (ri() > 0.82) {
-      ctx.beginPath();
-      ctx.moveTo(x1 + wobble + 1, y1 + wobble + 1);
-      ctx.lineTo(x2 + wobble + 2, y2 + wobble + 2);
-      ctx.lineWidth = baseW * 0.35;
-      ctx.globalAlpha = 0.4; ctx.stroke();
-    }
-    ctx.globalAlpha = 1;
+    baseW = Math.max(1.2, (p1 + p2) / 2 * 5);
+    alpha = 0.75 + ri() * 0.25;
   } else if (ink === "calligraphy") {
-    const nibAngle = Math.PI / 4;
+    const speedFactor = Math.max(0.35, Math.min(1.5, 300 / (speed + 10)));
+    const nibOffset = Math.PI / 4 * (0.6 + 0.4 * (p1 + p2) / 2);
+    const nibAngle = angle - nibOffset;
     const perpAngle = angle - nibAngle;
     const widthFactor = Math.abs(Math.cos(perpAngle));
-    const baseW = Math.max(1.5, (p1 + p2) / 2 * 12);
-    ctx.beginPath();
-    ctx.moveTo(x1, y1); ctx.lineTo(x2, y2);
-    ctx.moveTo(x1 + Math.cos(angle + Math.PI / 2) * baseW * widthFactor * 0.5, y1 + Math.sin(angle + Math.PI / 2) * baseW * widthFactor * 0.5);
-    ctx.lineTo(x2 + Math.cos(angle + Math.PI / 2) * baseW * widthFactor * 0.5, y2 + Math.sin(angle + Math.PI / 2) * baseW * widthFactor * 0.5);
-    ctx.strokeStyle = color; ctx.lineWidth = baseW * Math.max(0.3, widthFactor); ctx.lineCap = "round"; ctx.stroke();
+    const w = Math.max(1.2, (p1 + p2) / 2 * 14 * speedFactor);
+    baseW = w * Math.max(0.2, widthFactor);
+    alpha = 0.85;
   } else {
+    baseW = Math.max(2, (p1 + p2) / 2 * 9);
+    alpha = 1;
+  }
+
+  // Overlapping circles for smooth lines
+  const stepSize = Math.max(1, baseW * 0.3);
+  const steps = Math.max(1, Math.ceil(dist / stepSize));
+
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps;
+    const x = x1 + dx * t;
+    const y = y1 + dy * t;
+    const r = baseW * (ink === "calligraphy" ? 0.5 : 0.5);
     ctx.beginPath();
-    ctx.moveTo(x1, y1); ctx.lineTo(x2, y2);
-    ctx.strokeStyle = color; ctx.lineWidth = Math.max(2, (p1 + p2) / 2 * 9);
-    ctx.lineCap = "round"; ctx.lineJoin = "round"; ctx.stroke();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fillStyle = color;
+    ctx.globalAlpha = alpha;
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+
+  // Ink pooling for calligraphy
+  if (ink === "calligraphy" && speed < 30 && ri() > 0.4) {
+    ctx.beginPath();
+    ctx.arc((x1+x2)/2, (y1+y2)/2, Math.max(2, (p1+p2)/2*6*(1-speed/30)), 0, Math.PI*2);
+    ctx.fillStyle = color; ctx.globalAlpha = 0.5 + ri() * 0.3; ctx.fill();
+    ctx.globalAlpha = 1;
   }
 }
 

@@ -3,8 +3,8 @@ import "./globals.css";
 import { Providers } from "./providers";
 
 export const metadata: Metadata = {
-  title: "Caligraphia",
-  description: "A social network for handwriting-only posts",
+  title: "Croquia",
+  description: "A social network for handwritten sketches and letters",
 };
 
 export default function RootLayout({

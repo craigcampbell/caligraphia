@@ -12,6 +12,8 @@ model User {
   username    String   @unique
   email       String   @unique
   nomDePlume  String?  @map("nom_de_plume")
+  stampBalance Int    @default(0) @map("stamp_balance")
+  totalStampsEarned Int @default(0) @map("total_stamps_earned")
   createdAt   DateTime @default(now()) @map("created_at")
 
   posts        Post[]
@@ -19,6 +21,8 @@ model User {
   scratches    Scratch[]
   flags        Flag[]
   groups       Group[]
+  stamps       Stamp[]
+  marginalia   Marginalium[]
 
   followers  UserFollow[] @relation("following")
   following  UserFollow[] @relation("follower")
@@ -48,8 +52,15 @@ model Post {
   userId             String    @map("user_id") @db.Uuid
   postType           PostType  @map("post_type")
   canvasStrokeData   Json?     @map("canvas_stroke_data")
+  paperType          String?   @map("paper_type")
+  inkStyle           String?   @map("ink_style")
   finalImageUrl      String?   @map("final_image_url")
   uploadedPhotoUrl   String?   @map("uploaded_photo_url")
+  envelopeData       Json?     @map("envelope_data")
+  signatureData      Json?     @map("signature_data")
+  stampCount         Int       @default(0) @map("stamp_count")
+  recipientId        String?   @map("recipient_id") @db.Uuid
+  isPrivate          Boolean   @default(false) @map("is_private")
   ocrText            String?   @map("ocr_text")
   ocrHashtags        String[]  @map("ocr_hashtags")
   createdAt          DateTime  @default(now()) @map("created_at")
@@ -59,6 +70,10 @@ model Post {
   interactions PostInteraction[]
   scratches    Scratch[]
   flags        Flag[]
+  stamps       Stamp[]
+  replies      Reply[]           @relation("ParentPost")
+  childReplies Reply[]           @relation("ChildPost")
+  marginalia   Marginalium[]
 
   @@map("posts")
 }
@@ -125,4 +140,63 @@ model Flag {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("flags")
+}
+
+model Stamp {
+  id            String    @id @default(uuid()) @db.Uuid
+  ownerId       String    @map("owner_id") @db.Uuid
+  designId      String    @map("design_id") @db.Uuid
+  tier          String
+  series        String?
+  issueNumber   Int       @map("issue_number")
+  issuedAt      DateTime  @default(now()) @map("issued_at")
+  spentAt       DateTime? @map("spent_at")
+  spentOnPostId String?   @map("spent_on_post_id") @db.Uuid
+
+  owner   User  @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  design  StampDesign @relation(fields: [designId], references: [id])
+  spentOn Post? @relation(fields: [spentOnPostId], references: [id])
+
+  @@map("stamps")
+}
+
+model StampDesign {
+  id              String  @id @default(uuid()) @db.Uuid
+  name            String
+  imageUrl        String  @map("image_url")
+  tier            String
+  series          String?
+  season          Int?
+  totalMinted     Int     @map("total_minted")
+  currentlyMinted Int     @map("currently_minted") @default(0)
+
+  stamps Stamp[]
+
+  @@map("stamp_designs")
+}
+
+model Reply {
+  id           String   @id @default(uuid()) @db.Uuid
+  parentPostId String   @map("parent_post_id") @db.Uuid
+  childPostId  String   @map("child_post_id") @db.Uuid
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  parentPost Post @relation("ParentPost", fields: [parentPostId], references: [id], onDelete: Cascade)
+  childPost  Post @relation("ChildPost", fields: [childPostId], references: [id], onDelete: Cascade)
+
+  @@map("replies")
+}
+
+model Marginalium {
+  id        String   @id @default(uuid()) @db.Uuid
+  postId    String   @map("post_id") @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  svgData   String   @map("svg_data")
+  tool      String   @default("red_pen")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("marginalia")
 }

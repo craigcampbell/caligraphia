@@ -5,7 +5,7 @@ import { prisma } from "./prisma";
 const JWT_SECRET = process.env.JWT_SECRET || "dev-secret-change-in-production";
 const MAGIC_LINK_SECRET =
   process.env.MAGIC_LINK_SECRET || "magic-link-dev-secret";
-const SESSION_COOKIE = "caligraphia_session";
+const SESSION_COOKIE = "croquis_session";
 const MAGIC_LINK_EXPIRY = "10m";
 const SESSION_EXPIRY = "7d";
 

@@ -23,6 +23,8 @@ export async function GET(request: Request) {
 
   const where: Record<string, unknown> = {
     deletedAt: null,
+    // Only show public posts in the main feed
+    isPrivate: false,
   };
 
   if (userId) {
@@ -129,22 +131,45 @@ async function handleCanvasPost(request: Request, session: { userId: string; use
   const strokeData = body.canvas_stroke_data as StrokePoint[];
   const paper = (body.paper as string) || "blank";
   const inkStyle = (body.ink_style as string) || "standard";
+  const previewOnly = body.preview_only === true;
+  const envelopeData = body.envelope_data || null;
+  const signatureData = body.signature_data || null;
+  const recipientId = body.recipient_id || null;
+  const isPrivate = body.is_private === true;
 
+  // Render the letter to PNG
   const sharp = (await import("sharp")).default;
   const pngBuffer = await renderCanvasToPng(strokeData, paper, inkStyle);
-  const compressedBuffer = await sharp(pngBuffer).png({ quality: 85 }).toBuffer();
 
+  if (previewOnly) {
+    // For preview: save as a temp image, return URL but don't create DB record
+    const imageKey = `previews/${uuidv4()}.png`;
+    const compressedBuffer = await sharp(pngBuffer).png({ quality: 80 }).toBuffer();
+    const imageUrl = await uploadBuffer(imageKey, compressedBuffer, "image/png");
+    return NextResponse.json({ imageUrl });
+  }
+
+  // Full post: compress and store the final image
+  const compressedBuffer = await sharp(pngBuffer).png({ quality: 85 }).toBuffer();
   const imageKey = `posts/${uuidv4()}.png`;
   const imageUrl = await uploadBuffer(imageKey, compressedBuffer, "image/png");
 
+  // Run OCR
   const { text, hashtags } = await extractOcrFromImage(pngBuffer);
 
+  // Create the post
   const post = await prisma.post.create({
     data: {
       userId: session.userId,
       postType: "canvas",
       canvasStrokeData: strokeData as unknown as object,
+      paperType: paper,
+      inkStyle: inkStyle,
       finalImageUrl: imageUrl,
+      envelopeData: envelopeData ? (envelopeData as unknown as object) : undefined,
+      signatureData: signatureData ? (signatureData as unknown as object) : undefined,
+      recipientId: recipientId || undefined,
+      isPrivate: isPrivate,
       ocrText: text,
       ocrHashtags: hashtags,
     },
@@ -152,6 +177,9 @@ async function handleCanvasPost(request: Request, session: { userId: string; use
       user: { select: { id: true, username: true, nomDePlume: true } },
     },
   });
+
+  // Reward the user with stamps for posting
+  await giveStampReward(session.userId, post.id);
 
   return NextResponse.json({ post }, { status: 201 });
 }
@@ -169,6 +197,9 @@ async function handlePhotoPost(request: Request, session: { userId: string; user
   if (!photoFile || photoFile.size === 0) {
     return NextResponse.json({ error: "Photo is required" }, { status: 400 });
   }
+
+  const recipientId = bodyObj.recipient_id as string || null;
+  const isPrivate = bodyObj.is_private === true || !!recipientId;
 
   const arrayBuffer = await photoFile.arrayBuffer();
   const photoBuffer = Buffer.from(arrayBuffer);
@@ -188,6 +219,8 @@ async function handlePhotoPost(request: Request, session: { userId: string; user
       userId: session.userId,
       postType: "photo",
       uploadedPhotoUrl: photoUrl,
+      recipientId: recipientId || undefined,
+      isPrivate: isPrivate,
       ocrText: text,
       ocrHashtags: hashtags,
     },
@@ -196,5 +229,55 @@ async function handlePhotoPost(request: Request, session: { userId: string; user
     },
   });
 
+  // Reward stamps for photo posts too
+  await giveStampReward(session.userId, post.id);
+
   return NextResponse.json({ post }, { status: 201 });
+}
+
+// Reward a user with stamps for creating a post
+async function giveStampReward(userId: string, postId: string) {
+  // Generate or find a default common stamp design
+  let design = await prisma.stampDesign.findFirst({
+    where: { tier: "Common", name: "Standard Postage" },
+  });
+
+  if (!design) {
+    design = await prisma.stampDesign.create({
+      data: {
+        name: "Standard Postage",
+        imageUrl: "/stamps/common.png",
+        tier: "Common",
+        totalMinted: 999999,
+        currentlyMinted: 0,
+      },
+    });
+  }
+
+  // Create the stamp
+  const currentCount = await prisma.stamp.count();
+  await prisma.stamp.create({
+    data: {
+      ownerId: userId,
+      designId: design.id,
+      tier: "Common",
+      issueNumber: currentCount + 1,
+      series: "Standard Issue",
+    },
+  });
+
+  // Update user's stamp balance
+  await prisma.user.update({
+    where: { id: userId },
+    data: {
+      stampBalance: { increment: 1 },
+      totalStampsEarned: { increment: 1 },
+    },
+  });
+
+  // Update design mint count
+  await prisma.stampDesign.update({
+    where: { id: design.id },
+    data: { currentlyMinted: { increment: 1 } },
+  });
 }

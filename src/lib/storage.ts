@@ -15,7 +15,7 @@ function getClient(): Client {
   return _client;
 }
 
-const BUCKET = process.env.MINIO_BUCKET || "caligraphia";
+const BUCKET = process.env.MINIO_BUCKET || "croquis";
 
 export async function ensureBucket(): Promise<void> {
   const client = getClient();
@@ -50,9 +50,9 @@ export async function uploadFile(
 }
 
 export function getPublicUrl(key: string): string {
-  const endpoint = process.env.MINIO_ENDPOINT || "storage";
-  const port = process.env.MINIO_PORT || "9000";
-  return `http://${endpoint}:${port}/${BUCKET}/${key}`;
+  const publicEndpoint = process.env.MINIO_PUBLIC_ENDPOINT || process.env.MINIO_ENDPOINT || "localhost";
+  const publicPort = process.env.MINIO_PUBLIC_PORT || process.env.MINIO_PORT || "9000";
+  return `http://${publicEndpoint}:${publicPort}/${BUCKET}/${key}`;
 }
 
 export async function deleteObject(key: string): Promise<void> {

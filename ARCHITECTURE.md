@@ -1,4 +1,4 @@
-# Social Network: Handwriting-Only Posts
+# Croquia — Hand-Drawn Social Network
 
 ## Core Constraint
 Users cannot type text anywhere in the application — no text inputs, no keyboards, no pasting. The only exception is the **username field at signup** (single text input). All content creation must use a drawing canvas or photo upload. The goal is to force intentional, authentic expression — no copypasta, no automation, no slop.

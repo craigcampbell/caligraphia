@@ -15,6 +15,11 @@ const ALLOWED_STRING_FIELDS = new Set([
   "color",
   "ink_style",
   "paper",
+  "envelope_data",
+  "signature_data",
+  "preview_only",
+  "recipient_id",
+  "send_to",
 ]);
 
 const FORBIDDEN_FIELD_PATTERNS = [
