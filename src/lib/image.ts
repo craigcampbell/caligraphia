@@ -1,23 +1,14 @@
 import sharp from "sharp";
+import { renderStrokes, type StrokePoint } from "./ink-engine";
 
-export interface StrokePoint {
-  time: number;
-  x: number;
-  y: number;
-  pressure: number;
-  color: string;
-}
+export type { StrokePoint };
 
 const CANVAS_WIDTH = 2400;
 const CANVAS_HEIGHT = 3200;
 
 type PaperId = "blank" | "ruled" | "graph" | "watercolor" | "vellum" | "midnight";
-type InkId = "standard" | "runny" | "quill" | "calligraphy";
 
-function drawPaper(ctx: any, paper: PaperId) {
-  const w = CANVAS_WIDTH;
-  const h = CANVAS_HEIGHT;
-
+function drawPaper(ctx: any, paper: PaperId, w = CANVAS_WIDTH, h = CANVAS_HEIGHT) {
   switch (paper) {
     case "ruled":
       ctx.fillStyle = "#fdfcf8"; ctx.fillRect(0, 0, w, h);
@@ -84,118 +75,136 @@ function drawPaper(ctx: any, paper: PaperId) {
   }
 }
 
-let _seed = 42;
-function ri(): number { _seed = (_seed * 16807 + 0) % 2147483647; return (_seed & 0x7fffffff) / 0x7fffffff; }
-
-function renderSegment(ctx: any, ink: InkId, x1: number, y1: number, x2: number, y2: number, p1: number, p2: number, color: string) {
-  const dx = x2 - x1;
-  const dy = y2 - y1;
-  const dist = Math.sqrt(dx * dx + dy * dy);
-  const angle = Math.atan2(dy, dx);
-  const speed = dist;
-
-  let baseW: number;
-  let alpha: number;
-  if (ink === "runny") {
-    baseW = Math.max(2, (p1 + p2) / 2 * 10);
-    alpha = 0.7 + ri() * 0.3;
-  } else if (ink === "quill") {
-    baseW = Math.max(1.2, (p1 + p2) / 2 * 5);
-    alpha = 0.75 + ri() * 0.25;
-  } else if (ink === "calligraphy") {
-    const speedFactor = Math.max(0.35, Math.min(1.5, 300 / (speed + 10)));
-    const nibOffset = Math.PI / 4 * (0.6 + 0.4 * (p1 + p2) / 2);
-    const nibAngle = angle - nibOffset;
-    const perpAngle = angle - nibAngle;
-    const widthFactor = Math.abs(Math.cos(perpAngle));
-    const w = Math.max(1.2, (p1 + p2) / 2 * 14 * speedFactor);
-    baseW = w * Math.max(0.2, widthFactor);
-    alpha = 0.85;
-  } else {
-    baseW = Math.max(2, (p1 + p2) / 2 * 9);
-    alpha = 1;
-  }
-
-  // Overlapping circles for smooth lines
-  const stepSize = Math.max(1, baseW * 0.3);
-  const steps = Math.max(1, Math.ceil(dist / stepSize));
-
-  for (let i = 0; i <= steps; i++) {
-    const t = i / steps;
-    const x = x1 + dx * t;
-    const y = y1 + dy * t;
-    const r = baseW * (ink === "calligraphy" ? 0.5 : 0.5);
-    ctx.beginPath();
-    ctx.arc(x, y, r, 0, Math.PI * 2);
-    ctx.fillStyle = color;
-    ctx.globalAlpha = alpha;
-    ctx.fill();
-  }
-  ctx.globalAlpha = 1;
-
-  // Ink pooling for calligraphy
-  if (ink === "calligraphy" && speed < 30 && ri() > 0.4) {
-    ctx.beginPath();
-    ctx.arc((x1+x2)/2, (y1+y2)/2, Math.max(2, (p1+p2)/2*6*(1-speed/30)), 0, Math.PI*2);
-    ctx.fillStyle = color; ctx.globalAlpha = 0.5 + ri() * 0.3; ctx.fill();
-    ctx.globalAlpha = 1;
-  }
-}
-
-function drawDot(ctx: any, ink: InkId, px: number, py: number, pressure: number, color: string) {
-  if (ink === "runny") {
-    ctx.beginPath(); ctx.arc(px, py, Math.max(1, pressure * 8), 0, Math.PI * 2);
-    ctx.fillStyle = color; ctx.globalAlpha = 0.75; ctx.fill(); ctx.globalAlpha = 1;
-    for (let i = 0; i < 2; i++) {
-      ctx.beginPath();
-      ctx.arc(px + (ri() - 0.5) * 16, py + (ri() - 0.5) * 16, ri() * 3 + 1, 0, Math.PI * 2);
-      ctx.fillStyle = color; ctx.globalAlpha = ri() * 0.4; ctx.fill(); ctx.globalAlpha = 1;
-    }
-  } else if (ink === "quill") {
-    ctx.beginPath(); ctx.arc(px + (ri() - 0.5) * 2, py + (ri() - 0.5) * 2, Math.max(0.8, pressure * 4), 0, Math.PI * 2);
-    ctx.fillStyle = color; ctx.globalAlpha = 0.8; ctx.fill(); ctx.globalAlpha = 1;
-  } else if (ink === "calligraphy") {
-    const w = Math.max(1, pressure * 10);
-    const ht = Math.max(0.5, pressure * 3);
-    ctx.save(); ctx.translate(px, py); ctx.rotate(Math.PI / 4);
-    ctx.beginPath(); ctx.ellipse(0, 0, w, ht, 0, 0, Math.PI * 2);
-    ctx.fillStyle = color; ctx.fill(); ctx.restore();
-  } else {
-    ctx.beginPath(); ctx.arc(px, py, Math.max(1.2, pressure * 7), 0, Math.PI * 2);
-    ctx.fillStyle = color; ctx.fill();
-  }
-}
-
 export async function renderCanvasToPng(
+  strokes: StrokePoint[],
+  paper: string = "blank",
+  inkStyle: string = "standard",
+  width: number = CANVAS_WIDTH,
+  height: number = CANVAS_HEIGHT
+): Promise<Buffer> {
+  const { createCanvas } = await import("@napi-rs/canvas");
+  const canvas = createCanvas(width, height);
+  const ctx = canvas.getContext("2d");
+
+  drawPaper(ctx, paper as PaperId, width, height);
+  renderStrokes(ctx, strokes, inkStyle, width, height);
+
+  return canvas.toBuffer("image/png");
+}
+
+// Postscript (comment) cards are short and wide — a strip of paper, not a page.
+export const COMMENT_WIDTH = 1200;
+export const COMMENT_HEIGHT = 420;
+
+export function renderCommentToPng(
+  strokes: StrokePoint[],
+  inkStyle: string = "standard"
+): Promise<Buffer> {
+  return renderCanvasToPng(strokes, "blank", inkStyle, COMMENT_WIDTH, COMMENT_HEIGHT);
+}
+
+// Postcards: landscape, smaller than a letter, postmarked on arrival.
+export const POSTCARD_WIDTH = 1600;
+export const POSTCARD_HEIGHT = 1100;
+
+export async function renderPostcardToPng(
   strokes: StrokePoint[],
   paper: string = "blank",
   inkStyle: string = "standard"
 ): Promise<Buffer> {
   const { createCanvas } = await import("@napi-rs/canvas");
-  const canvas = createCanvas(CANVAS_WIDTH, CANVAS_HEIGHT);
+  const canvas = createCanvas(POSTCARD_WIDTH, POSTCARD_HEIGHT);
   const ctx = canvas.getContext("2d");
 
-  drawPaper(ctx, paper as PaperId);
-
-  const sorted = [...strokes].sort((a, b) => a.time - b.time);
-
-  for (let i = 0; i < sorted.length; i++) {
-    const p = sorted[i];
-    const px = p.x * CANVAS_WIDTH;
-    const py = p.y * CANVAS_HEIGHT;
-    if (i > 0) {
-      const prev = sorted[i - 1];
-      if (p.time - prev.time < 200) {
-        renderSegment(ctx, inkStyle as InkId, prev.x * CANVAS_WIDTH, prev.y * CANVAS_HEIGHT, px, py, prev.pressure, p.pressure, p.color);
-      } else {
-        drawDot(ctx, inkStyle as InkId, px, py, p.pressure, p.color);
-      }
-    } else {
-      drawDot(ctx, inkStyle as InkId, px, py, p.pressure, p.color);
-    }
-  }
+  drawPaper(ctx, paper as PaperId, POSTCARD_WIDTH, POSTCARD_HEIGHT);
+  renderStrokes(ctx, strokes, inkStyle, POSTCARD_WIDTH, POSTCARD_HEIGHT);
+  drawPostmark(ctx, POSTCARD_WIDTH, POSTCARD_HEIGHT);
 
   return canvas.toBuffer("image/png");
+}
+
+// A cancellation mark in the top-right corner: double ring, date, wavy bars.
+function drawPostmark(ctx: any, w: number, h: number) {
+  const cx = w - 190;
+  const cy = 170;
+  const r = 105;
+  const inkColor = "rgba(60,50,70,0.55)";
+
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(-0.12);
+
+  ctx.strokeStyle = inkColor;
+  ctx.lineWidth = 5;
+  ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.stroke();
+  ctx.lineWidth = 2.5;
+  ctx.beginPath(); ctx.arc(0, 0, r - 14, 0, Math.PI * 2); ctx.stroke();
+
+  ctx.fillStyle = inkColor;
+  ctx.textAlign = "center";
+  try {
+    const date = new Date();
+    const months = ["JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC"];
+    ctx.font = "bold 30px serif";
+    ctx.fillText("CALIGRAPHIA", 0, -28);
+    ctx.font = "bold 34px serif";
+    ctx.fillText(`${date.getDate()} ${months[date.getMonth()]}`, 0, 12);
+    ctx.font = "bold 30px serif";
+    ctx.fillText(`${date.getFullYear()}`, 0, 48);
+  } catch {
+    // No fonts available (bare container): the rings alone still read as a postmark
+  }
+
+  // Wavy cancellation bars trailing left from the ring
+  ctx.lineWidth = 4;
+  for (let bar = 0; bar < 4; bar++) {
+    const by = -36 + bar * 24;
+    ctx.beginPath();
+    for (let x = -r - 320; x < -r + 6; x += 8) {
+      const y = by + Math.sin(x / 22) * 6;
+      x === -r - 320 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+  }
+
+  ctx.restore();
+}
+
+// Round robins: each section is a wide band; finished robins stack 3 bands.
+export const ROBIN_SECTION_WIDTH = 2400;
+export const ROBIN_SECTION_HEIGHT = 1100;
+export const ROBIN_SIZE = 3;
+
+export function renderRobinSectionToPng(
+  strokes: StrokePoint[],
+  inkStyle: string = "standard"
+): Promise<Buffer> {
+  return renderCanvasToPng(strokes, "blank", inkStyle, ROBIN_SECTION_WIDTH, ROBIN_SECTION_HEIGHT);
+}
+
+// The sliver of a section the next writer is allowed to see (bottom ~18%)
+export async function cropRobinPeek(sectionPng: Buffer): Promise<Buffer> {
+  const peekH = Math.round(ROBIN_SECTION_HEIGHT * 0.18);
+  return sharp(sectionPng)
+    .extract({ left: 0, top: ROBIN_SECTION_HEIGHT - peekH, width: ROBIN_SECTION_WIDTH, height: peekH })
+    .png()
+    .toBuffer();
+}
+
+// Stack the finished sections into one tall letter
+export async function compositeRobin(sectionPngs: Buffer[]): Promise<Buffer> {
+  const total = ROBIN_SECTION_HEIGHT * sectionPngs.length;
+  return sharp({
+    create: {
+      width: ROBIN_SECTION_WIDTH,
+      height: total,
+      channels: 4,
+      background: { r: 255, g: 255, b: 255, alpha: 1 },
+    },
+  })
+    .composite(sectionPngs.map((input, i) => ({ input, top: i * ROBIN_SECTION_HEIGHT, left: 0 })))
+    .png()
+    .toBuffer();
 }
 
 export async function compositeScratchOverlay(

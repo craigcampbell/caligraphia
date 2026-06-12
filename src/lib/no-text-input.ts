@@ -20,6 +20,8 @@ const ALLOWED_STRING_FIELDS = new Set([
   "preview_only",
   "recipient_id",
   "send_to",
+  "format",
+  "delivery",
 ]);
 
 const FORBIDDEN_FIELD_PATTERNS = [

@@ -48,3 +48,56 @@ export async function sendMagicLinkEmail(
     throw new Error(`Failed to send email (${res.status}): ${detail}`);
   }
 }
+
+/**
+ * Tells someone a letter is waiting (or on its way, for slow post). No
+ * preview, no sender's words — the unsealing happens in the app. Never
+ * throws: a failed notification must not fail the letter itself.
+ */
+export async function sendLetterArrivedEmail(
+  to: string,
+  senderUsername: string,
+  options: { slow?: boolean } = {}
+): Promise<void> {
+  try {
+    const apiKey = process.env.RESEND_API_KEY;
+    if (!apiKey) return; // dev without mail — silently skip
+
+    const from = process.env.EMAIL_FROM || "Caligraphia <post@caligraphia.app>";
+    const inboxUrl = `${process.env.BASE_URL || "http://localhost:3000"}/inbox`;
+    const subject = options.slow
+      ? "A letter is on its way to you"
+      : "A letter is waiting for you";
+    const line = options.slow
+      ? `${senderUsername} has posted you a letter by evening post. It will arrive tomorrow morning.`
+      : `${senderUsername} has left a letter in your box.`;
+
+    const res = await fetch(RESEND_API_URL, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        from,
+        to: [to],
+        subject,
+        text: `${line}\n\nOpen your inbox: ${inboxUrl}`,
+        html: `
+          <div style="font-family: Georgia, 'Times New Roman', serif; max-width: 480px; margin: 0 auto; padding: 32px 24px; color: #2c2416;">
+            <h1 style="font-size: 24px; margin-bottom: 8px;">&#9993; Caligraphia</h1>
+            <p style="color: #6b5c40;">${line}</p>
+            <p style="margin: 28px 0;">
+              <a href="${inboxUrl}" style="background: #1a1a1a; color: #fff; padding: 13px 28px; border-radius: 6px; text-decoration: none; font-weight: 600;">Open your inbox</a>
+            </p>
+          </div>
+        `,
+      }),
+    });
+    if (!res.ok) {
+      console.error(`Letter notification failed (${res.status})`);
+    }
+  } catch (err) {
+    console.error("Letter notification failed:", err);
+  }
+}

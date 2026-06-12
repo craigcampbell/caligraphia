@@ -12,11 +12,15 @@ export async function GET(request: Request) {
   const cursor = searchParams.get("cursor");
   const limit = Math.min(parseInt(searchParams.get("limit") || "20", 10), 50);
 
-  // Private letters sent to the current user
+  // Private letters sent to the current user, minus any still in transit
+  const delivered = {
+    OR: [{ deliverAt: null }, { deliverAt: { lte: new Date() } }],
+  };
   const posts = await prisma.post.findMany({
     where: {
       recipientId: session.userId,
       deletedAt: null,
+      ...delivered,
     },
     include: {
       user: { select: { id: true, username: true, nomDePlume: true } },
@@ -39,6 +43,7 @@ export async function GET(request: Request) {
     where: {
       recipientId: session.userId,
       deletedAt: null,
+      ...delivered,
     },
   });
 

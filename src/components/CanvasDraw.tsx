@@ -3,9 +3,16 @@
 import { useRef, useState, useCallback, useEffect } from "react";
 import { useNoKeyboard } from "@/hooks/useNoKeyboard";
 import { usePenSounds } from "@/hooks/usePenSounds";
+import {
+  renderSegment,
+  drawDot,
+  INK_STYLES,
+  REFERENCE_WIDTH,
+  type InkId,
+} from "@/lib/ink-engine";
 
-const CANVAS_W = 2400;
-const CANVAS_H = 3200;
+const DEFAULT_W = 2400;
+const DEFAULT_H = 3200;
 
 const PAPER_PRESETS = [
   { id: "blank", name: "Blank", bg: "#ffffff" },
@@ -17,17 +24,6 @@ const PAPER_PRESETS = [
 ] as const;
 
 type PaperId = (typeof PAPER_PRESETS)[number]["id"];
-
-const INK_STYLES = [
-  { id: "standard", name: "Standard", desc: "round nib" },
-  { id: "runny", name: "Runny", desc: "wet & splattery" },
-  { id: "quill", name: "Quill", desc: "scratchy nib" },
-  { id: "calligraphy", name: "Callig.", desc: "flat angle nib" },
-  { id: "copperplate", name: "Copperplate", desc: "pointed-nib, pressure-driven" },
-  { id: "brush", name: "Brush", desc: "wide calligraphy brush" },
-] as const;
-
-type InkId = (typeof INK_STYLES)[number]["id"];
 
 const INK_COLORS = [
   "#1a1a2e", "#c0392b", "#2471a3", "#27ae60", "#8e44ad",
@@ -41,6 +37,7 @@ interface StrokePoint {
   y: number;
   pressure: number;
   color: string;
+  ink?: InkId;
   tiltX?: number;
   tiltY?: number;
 }
@@ -49,17 +46,14 @@ interface Props {
   onComplete: (strokes: StrokePoint[], drawingDurationMs: number, paper: PaperId, inkStyle: InkId) => void;
   onCancel: () => void;
   minDrawTimeMs?: number;
+  // Canvas size in drawing units — letters are 2400x3200, postcards and
+  // robin sections pass their own
+  canvasW?: number;
+  canvasH?: number;
+  submitLabel?: string;
 }
 
-let inkSeed = Date.now();
-function ri(): number {
-  inkSeed = (inkSeed * 16807 + 0) % 2147483647;
-  return (inkSeed & 0x7fffffff) / 0x7fffffff;
-}
-
-function drawPaper(ctx: CanvasRenderingContext2D, paper: PaperId) {
-  const w = CANVAS_W;
-  const h = CANVAS_H;
+function drawPaper(ctx: CanvasRenderingContext2D, paper: PaperId, w: number, h: number) {
   const preset = PAPER_PRESETS.find((p) => p.id === paper) || PAPER_PRESETS[0];
   ctx.fillStyle = preset.bg;
   ctx.fillRect(0, 0, w, h);
@@ -117,159 +111,15 @@ function drawPaper(ctx: CanvasRenderingContext2D, paper: PaperId) {
   }
 }
 
-function renderSegment(ctx: CanvasRenderingContext2D, ink: InkId, x1: number, y1: number, x2: number, y2: number, p1: number, p2: number, color: string) {
-  const dx = x2 - x1;
-  const dy = y2 - y1;
-  const dist = Math.sqrt(dx * dx + dy * dy);
-  const angle = Math.atan2(dy, dx);
-
-  // Compute base width for this segment
-  let baseW: number;
-  let alpha: number;
-  if (ink === "runny") {
-    baseW = Math.max(2, (p1 + p2) / 2 * 10);
-    alpha = 0.7 + ri() * 0.3;
-  } else if (ink === "quill") {
-    baseW = Math.max(1.2, (p1 + p2) / 2 * 5);
-    alpha = 0.75 + ri() * 0.25;
-  } else if (ink === "calligraphy") {
-    const speed = Math.sqrt(dx * dx + dy * dy);
-    const speedFactor = Math.max(0.35, Math.min(1.5, 300 / (speed + 10)));
-    const nibOffset = Math.PI / 4 * (0.6 + 0.4 * (p1 + p2) / 2);
-    const nibAngle = angle - nibOffset;
-    const perpAngle = angle - nibAngle;
-    const widthFactor = Math.abs(Math.cos(perpAngle));
-    const w = Math.max(1.2, (p1 + p2) / 2 * 14 * speedFactor);
-    baseW = w * Math.max(0.2, widthFactor);
-    alpha = 0.85;
-  } else if (ink === "copperplate") {
-    // Pointed-nib: ultra-thin hairlines, swells purely from pressure
-    baseW = Math.max(0.4, (p1 + p2) / 2 * 18);
-    alpha = 0.9 + ri() * 0.1;
-  } else if (ink === "brush") {
-    // Wide calligraphy brush — speed thins the stroke, pressure widens it
-    const speed = Math.sqrt(dx * dx + dy * dy);
-    const speedFactor = Math.max(0.4, Math.min(1.2, 200 / (speed + 8)));
-    baseW = Math.max(1.5, (p1 + p2) / 2 * 22 * speedFactor);
-    alpha = 0.65 + (p1 + p2) / 2 * 0.3;
-  } else {
-    baseW = Math.max(2, (p1 + p2) / 2 * 9);
-    alpha = 1;
-  }
-
-  // Overlapping circles technique: draw circles at intervals along the segment
-  // This creates a much smoother line than lineTo, especially on fast strokes
-  const stepSize = Math.max(1, baseW * 0.3);
-  const steps = Math.max(1, Math.ceil(dist / stepSize));
-
-  for (let i = 0; i <= steps; i++) {
-    const t = i / steps;
-    const x = x1 + dx * t;
-    const y = y1 + dy * t;
-    const p = p1 + (p2 - p1) * t;
-    const r = baseW * (ink === "calligraphy" ? 0.5 : 0.5);
-
-    ctx.beginPath();
-    ctx.arc(x, y, r, 0, Math.PI * 2);
-    ctx.fillStyle = color;
-    ctx.globalAlpha = alpha;
-    ctx.fill();
-  }
-  ctx.globalAlpha = 1;
-
-  // Calligraphy extras: ink pooling and splatter
-  if (ink === "calligraphy") {
-    const speed = Math.sqrt(dx * dx + dy * dy);
-    // Ink pooling at slow speed
-    if (speed < 30 && ri() > 0.4) {
-      const poolR = Math.max(2, (p1 + p2) / 2 * 6 * (1 - speed / 30));
-      ctx.beginPath();
-      ctx.arc((x1 + x2) / 2, (y1 + y2) / 2, poolR, 0, Math.PI * 2);
-      ctx.fillStyle = color;
-      ctx.globalAlpha = 0.5 + ri() * 0.3;
-      ctx.fill();
-      ctx.globalAlpha = 1;
-    }
-    if (speed > 50 && ri() > 0.85) {
-      for (let s = 0; s < 2; s++) {
-        ctx.beginPath();
-        ctx.arc(x2 + (ri() - 0.5) * 20, y2 + (ri() - 0.5) * 20, ri() * 3 + 1, 0, Math.PI * 2);
-        ctx.fillStyle = color;
-        ctx.globalAlpha = ri() * 0.4;
-        ctx.fill();
-      }
-      ctx.globalAlpha = 1;
-    }
-  }
-
-  // Runny ink splatter
-  if (ink === "runny") {
-    for (let i = 0; i < 3; i++) {
-      if (ri() > 0.55) {
-        ctx.beginPath();
-        ctx.arc(x1 + dx * ri() + (ri() - 0.5) * 30, y1 + dy * ri() + (ri() - 0.5) * 30, ri() * 4 + 1, 0, Math.PI * 2);
-        ctx.fillStyle = color;
-        ctx.globalAlpha = ri() * 0.5;
-        ctx.fill();
-      }
-    }
-    ctx.globalAlpha = 1;
-  }
-
-  // Quill wobble
-  if (ink === "quill" && ri() > 0.82) {
-    const wobble = (ri() - 0.5) * 3;
-    ctx.beginPath();
-    ctx.arc(x2 + wobble + 1, y2 + wobble + 1, baseW * 0.35, 0, Math.PI * 2);
-    ctx.fillStyle = color;
-    ctx.globalAlpha = 0.4;
-    ctx.fill();
-    ctx.globalAlpha = 1;
-  }
-}
-
-function drawDot(ctx: CanvasRenderingContext2D, ink: InkId, px: number, py: number, pressure: number, color: string) {
-  if (ink === "runny") {
-    const r = Math.max(1, pressure * 8);
-    ctx.beginPath(); ctx.arc(px, py, r, 0, Math.PI * 2);
-    ctx.fillStyle = color; ctx.globalAlpha = 0.75; ctx.fill(); ctx.globalAlpha = 1;
-    for (let i = 0; i < 2; i++) {
-      ctx.beginPath();
-      ctx.arc(px + (ri() - 0.5) * 16, py + (ri() - 0.5) * 16, ri() * 3 + 1, 0, Math.PI * 2);
-      ctx.fillStyle = color; ctx.globalAlpha = ri() * 0.4; ctx.fill(); ctx.globalAlpha = 1;
-    }
-  } else if (ink === "quill") {
-    const r = Math.max(0.8, pressure * 4);
-    ctx.beginPath(); ctx.arc(px + (ri() - 0.5) * 2, py + (ri() - 0.5) * 2, r, 0, Math.PI * 2);
-    ctx.fillStyle = color; ctx.globalAlpha = 0.8; ctx.fill(); ctx.globalAlpha = 1;
-  } else if (ink === "calligraphy") {
-    const w = Math.max(1, pressure * 10);
-    const h = Math.max(0.5, pressure * 3);
-    ctx.save();
-    ctx.translate(px, py);
-    ctx.rotate(Math.PI / 4);
-    ctx.beginPath();
-    ctx.ellipse(0, 0, w, h, 0, 0, Math.PI * 2);
-    ctx.fillStyle = color;
-    ctx.fill();
-    ctx.restore();
-  } else if (ink === "copperplate") {
-    const r = Math.max(0.4, pressure * 9);
-    ctx.beginPath(); ctx.arc(px, py, r, 0, Math.PI * 2);
-    ctx.fillStyle = color; ctx.globalAlpha = 0.92; ctx.fill(); ctx.globalAlpha = 1;
-  } else if (ink === "brush") {
-    const r = Math.max(1.5, pressure * 14);
-    ctx.beginPath(); ctx.arc(px, py, r, 0, Math.PI * 2);
-    ctx.fillStyle = color; ctx.globalAlpha = 0.7 + pressure * 0.25; ctx.fill(); ctx.globalAlpha = 1;
-  } else {
-    ctx.beginPath();
-    ctx.arc(px, py, Math.max(1.2, pressure * 7), 0, Math.PI * 2);
-    ctx.fillStyle = color;
-    ctx.fill();
-  }
-}
-
-export function CanvasDraw({ onComplete, onCancel, minDrawTimeMs = 4000 }: Props) {
+export function CanvasDraw({
+  onComplete,
+  onCancel,
+  minDrawTimeMs = 4000,
+  canvasW = DEFAULT_W,
+  canvasH = DEFAULT_H,
+  submitLabel,
+}: Props) {
+  const inkScale = canvasW / REFERENCE_WIDTH;
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const ctxRef = useRef<CanvasRenderingContext2D | null>(null);
   const [drawing, setDrawing] = useState(false);
@@ -313,11 +163,11 @@ export function CanvasDraw({ onComplete, onCancel, minDrawTimeMs = 4000 }: Props
       if (!parent) return;
       const pw = parent.clientWidth;
       const ph = Math.max(window.innerHeight * 0.78, 500);
-      const scale = Math.min(pw / CANVAS_W, ph / CANVAS_H);
-      canvas.width = CANVAS_W;
-      canvas.height = CANVAS_H;
-      canvas.style.width = `${CANVAS_W * scale}px`;
-      canvas.style.height = `${CANVAS_H * scale}px`;
+      const scale = Math.min(pw / canvasW, ph / canvasH);
+      canvas.width = canvasW;
+      canvas.height = canvasH;
+      canvas.style.width = `${canvasW * scale}px`;
+      canvas.style.height = `${canvasH * scale}px`;
       const ctx = canvas.getContext("2d");
       if (ctx) { ctxRef.current = ctx; redraw(ctx); }
     };
@@ -327,21 +177,24 @@ export function CanvasDraw({ onComplete, onCancel, minDrawTimeMs = 4000 }: Props
   }, [paper, inkStyle]);
 
   const redraw = (ctx: CanvasRenderingContext2D) => {
-    drawPaper(ctx, paper);
+    drawPaper(ctx, paper, canvasW, canvasH);
     const pts = strokesRef.current;
     for (let i = 0; i < pts.length; i++) {
       const p = pts[i];
-      const px = p.x * CANVAS_W;
-      const py = p.y * CANVAS_H;
+      // Each point remembers the pen it was drawn with, so switching pens
+      // mid-letter survives undo/resize redraws
+      const ink = p.ink || inkStyle;
+      const px = p.x * canvasW;
+      const py = p.y * canvasH;
       if (i > 0) {
         const prev = pts[i - 1];
         if (p.time - prev.time < 300) {
-          renderSegment(ctx, inkStyle, prev.x * CANVAS_W, prev.y * CANVAS_H, px, py, prev.pressure, p.pressure, p.color);
+          renderSegment(ctx, ink, prev.x * canvasW, prev.y * canvasH, px, py, prev.pressure, p.pressure, p.color, inkScale);
         } else {
-          drawDot(ctx, inkStyle, px, py, p.pressure, p.color);
+          drawDot(ctx, ink, px, py, p.pressure, p.color, inkScale);
         }
       } else {
-        drawDot(ctx, inkStyle, px, py, p.pressure, p.color);
+        drawDot(ctx, ink, px, py, p.pressure, p.color, inkScale);
       }
     }
   };
@@ -402,19 +255,19 @@ export function CanvasDraw({ onComplete, onCancel, minDrawTimeMs = 4000 }: Props
     const tiltY = (e as any).tiltY !== undefined ? (e as any).tiltY : undefined;
     const now = Date.now();
     if (!firstStrokeTimeRef.current) { firstStrokeTimeRef.current = now; startTimer(); }
-    strokesRef.current.push({ time: now, x, y, pressure, color: selectedColor, tiltX, tiltY });
-    const px = x * CANVAS_W;
-    const py = y * CANVAS_H;
+    strokesRef.current.push({ time: now, x, y, pressure, color: selectedColor, ink: inkStyle, tiltX, tiltY });
+    const px = x * canvasW;
+    const py = y * canvasH;
     const prev = lastPtRef.current;
     if (prev) {
       const lastStroke = strokesRef.current[strokesRef.current.length - 2];
       if (lastStroke && now - lastStroke.time < 300) {
-        renderSegment(ctx, inkStyle, prev.px, prev.py, px, py, prev.pressure, pressure, selectedColor);
+        renderSegment(ctx, inkStyle, prev.px, prev.py, px, py, prev.pressure, pressure, selectedColor, inkScale);
       } else {
-        drawDot(ctx, inkStyle, px, py, pressure, selectedColor);
+        drawDot(ctx, inkStyle, px, py, pressure, selectedColor, inkScale);
       }
     } else {
-      drawDot(ctx, inkStyle, px, py, pressure, selectedColor);
+      drawDot(ctx, inkStyle, px, py, pressure, selectedColor, inkScale);
     }
     lastPtRef.current = { px, py, pressure, color: selectedColor };
 
@@ -479,7 +332,7 @@ export function CanvasDraw({ onComplete, onCancel, minDrawTimeMs = 4000 }: Props
   const dropInkSplatter = useCallback(() => {
     const ctx = ctxRef.current;
     if (!ctx) return;
-    const cw = CANVAS_W, ch = CANVAS_H;
+    const cw = canvasW, ch = canvasH;
     const cx = cw * (0.15 + Math.random() * 0.7);
     const cy = ch * (0.15 + Math.random() * 0.7);
     const mainR = 8 + Math.random() * 30;
@@ -610,7 +463,7 @@ export function CanvasDraw({ onComplete, onCancel, minDrawTimeMs = 4000 }: Props
           &#8630; Undo stroke
         </button>
         <button onClick={handleSubmit} className={`btn-submit ${canSubmit ? "ready" : "disabled"}`} disabled={!canSubmit}>
-          {canSubmit ? "Send Your Letter" : "Ink still drying..."}
+          {canSubmit ? (submitLabel || "Send Your Letter") : "Ink still drying..."}
         </button>
       </div>
 

@@ -21,15 +21,28 @@ export async function GET(
         },
         orderBy: { createdAt: "asc" },
       },
+      comments: {
+        where: { deletedAt: null },
+        include: {
+          user: { select: { id: true, username: true, nomDePlume: true } },
+        },
+        orderBy: { createdAt: "asc" },
+      },
       _count: {
         select: {
           scratches: true,
+          comments: true,
         },
       },
     },
   });
 
   if (!post || post.deletedAt) {
+    return NextResponse.json({ error: "Post not found" }, { status: 404 });
+  }
+
+  // Slow post still in transit: only the sender may see it
+  if (post.deliverAt && post.deliverAt > new Date() && post.userId !== session.userId) {
     return NextResponse.json({ error: "Post not found" }, { status: 404 });
   }
 

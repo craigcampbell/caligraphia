@@ -1,8 +1,9 @@
 "use client";
 
 import { useRef, useState, useEffect, useCallback } from "react";
+import { renderSegment, drawDot } from "@/lib/ink-engine";
 
-// Reuses the same rendering logic from CanvasDraw
+// Same canvas size and ink engine the letter was written with
 const CANVAS_W = 2400;
 const CANVAS_H = 3200;
 
@@ -11,47 +12,8 @@ const PAPER_BG: Record<string, string> = {
   watercolor: "#faf6f0", vellum: "#f5f0e8", midnight: "#0d0d1a",
 };
 
-let _seed = Date.now();
-function ri(): number { _seed = (_seed * 16807 + 0) % 2147483647; return (_seed & 0x7fffffff) / 0x7fffffff; }
-
-function renderLine(ctx: CanvasRenderingContext2D, ink: string, x1: number, y1: number, x2: number, y2: number, p1: number, p2: number, color: string) {
-  const dx = x2 - x1, dy = y2 - y1;
-  const angle = Math.atan2(dy, dx);
-  ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2);
-  ctx.strokeStyle = color; ctx.lineCap = "round"; ctx.lineJoin = "round";
-  if (ink === "runny") {
-    ctx.lineWidth = Math.max(2, (p1 + p2) / 2 * 10);
-    ctx.globalAlpha = 0.7 + ri() * 0.3; ctx.stroke(); ctx.globalAlpha = 1;
-  } else if (ink === "quill") {
-    ctx.lineWidth = Math.max(1.2, (p1 + p2) / 2 * 5);
-    ctx.globalAlpha = 0.75 + ri() * 0.25; ctx.stroke(); ctx.globalAlpha = 1;
-  } else if (ink === "calligraphy") {
-    const nib = Math.PI / 4;
-    const wf = Math.abs(Math.cos(angle - nib));
-    ctx.lineWidth = Math.max(1.5, (p1 + p2) / 2 * 12) * Math.max(0.3, wf);
-    ctx.stroke();
-  } else if (ink === "copperplate") {
-    ctx.lineWidth = Math.max(0.4, (p1 + p2) / 2 * 18);
-    ctx.globalAlpha = 0.92; ctx.stroke(); ctx.globalAlpha = 1;
-  } else if (ink === "brush") {
-    const speed = Math.sqrt(dx * dx + dy * dy);
-    const sf = Math.max(0.4, Math.min(1.2, 200 / (speed + 8)));
-    ctx.lineWidth = Math.max(1.5, (p1 + p2) / 2 * 22 * sf);
-    ctx.globalAlpha = 0.65 + (p1 + p2) / 2 * 0.3; ctx.stroke(); ctx.globalAlpha = 1;
-  } else {
-    ctx.lineWidth = Math.max(2, (p1 + p2) / 2 * 9);
-    ctx.stroke();
-  }
-}
-
-function renderDot(ctx: CanvasRenderingContext2D, ink: string, px: number, py: number, pressure: number, color: string) {
-  ctx.beginPath();
-  ctx.arc(px, py, Math.max(1.2, pressure * 7), 0, Math.PI * 2);
-  ctx.fillStyle = color; ctx.fill();
-}
-
 interface ReplayPoint {
-  time: number; x: number; y: number; pressure: number; color: string;
+  time: number; x: number; y: number; pressure: number; color: string; ink?: string;
 }
 
 interface Props {
@@ -102,10 +64,11 @@ export function DrawingReplay({ strokes, paper = "blank", inkStyle = "standard",
       if (p.time > maxTime) break;
       const px = p.x * CANVAS_W;
       const py = p.y * CANVAS_H;
+      const ink = p.ink || inkStyle;
       if (i > 0 && p.time - sorted[i-1].time < 300) {
-        renderLine(ctx, inkStyle, sorted[i-1].x * CANVAS_W, sorted[i-1].y * CANVAS_H, px, py, sorted[i-1].pressure, p.pressure, p.color);
+        renderSegment(ctx, ink, sorted[i-1].x * CANVAS_W, sorted[i-1].y * CANVAS_H, px, py, sorted[i-1].pressure, p.pressure, p.color);
       } else {
-        renderDot(ctx, inkStyle, px, py, p.pressure, p.color);
+        drawDot(ctx, ink, px, py, p.pressure, p.color);
       }
       lastDrawn = i + 1;
     }

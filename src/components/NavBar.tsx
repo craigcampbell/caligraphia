@@ -43,6 +43,10 @@ export function NavBar() {
               <EnvelopeIcon size={14} />Inbox
             </Link>
             <Link href="/gallery" className="nav-link" title="Walk among the letters">The Line</Link>
+            <Link href="/board" className="nav-link" title="Everyone's letters, pinned along one wall">The Board</Link>
+            <Link href="/requests" className="nav-link" title="Ask someone to write or draw for you">Requests</Link>
+            <Link href="/robins" className="nav-link" title="Letters written by three hands">Robins</Link>
+            <Link href="/dead-letters" className="nav-link" title="Letters to no one, waiting to be claimed">Dead Letters</Link>
             <Link href="/groups" className="nav-link">Circles</Link>
             <Link href="/stamps" className="nav-link" title="Stamp Book">
               <StarIcon size={14} />Stamps

@@ -7,6 +7,7 @@ import { NavBar } from "@/components/NavBar";
 import { StampButton } from "@/components/StampButton";
 import { ScratchOverlay } from "@/components/ScratchOverlay";
 import { DrawingReplay } from "@/components/DrawingReplay";
+import { Postscripts } from "@/components/Postscripts";
 import { useAuth } from "@/hooks/useAuth";
 import Link from "next/link";
 
@@ -153,6 +154,8 @@ export default function PostDetailPage() {
             ))}
           </div>
         )}
+
+        <Postscripts endpoint={`/api/posts/${post.id}/comments`} initialComments={post.comments || []} />
 
         {scratches.length > 0 && (
           <div className="detail-scratches">

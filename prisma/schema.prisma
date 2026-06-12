@@ -24,6 +24,14 @@ model User {
   groups       Group[]
   stamps       Stamp[]
   marginalia   Marginalium[]
+  comments     Comment[]
+
+  requestsMade     LetterRequest[] @relation("RequestsMade")
+  requestsReceived LetterRequest[] @relation("RequestsReceived")
+
+  guestbookEntries  GuestbookEntry[] @relation("GuestbookOwner")
+  guestbookWritings GuestbookEntry[] @relation("GuestbookAuthor")
+  robinSections     RoundRobinSection[]
 
   followers  UserFollow[] @relation("following")
   following  UserFollow[] @relation("follower")
@@ -66,6 +74,11 @@ model Post {
   recipientId        String?   @map("recipient_id") @db.Uuid
   isPrivate          Boolean   @default(false) @map("is_private")
   needsReview        Boolean   @default(false) @map("needs_review")
+  format             String    @default("letter") // letter | postcard
+  // Slow post: hidden from the recipient until this moment passes
+  deliverAt          DateTime? @map("deliver_at")
+  // Dead Letter Office: written to no one, waiting to be claimed
+  isDeadLetter       Boolean   @default(false) @map("is_dead_letter")
   ocrText            String?   @map("ocr_text")
   ocrHashtags        String[]  @map("ocr_hashtags")
   createdAt          DateTime  @default(now()) @map("created_at")
@@ -79,6 +92,11 @@ model Post {
   replies      Reply[]           @relation("ParentPost")
   childReplies Reply[]           @relation("ChildPost")
   marginalia   Marginalium[]
+  comments     Comment[]
+
+  requestAsk         LetterRequest? @relation("RequestAsk")
+  requestFulfillment LetterRequest? @relation("RequestFulfillment")
+  robinFinal         RoundRobin?
 
   @@map("posts")
 }
@@ -206,6 +224,102 @@ model Exchange {
   userB User? @relation("ExchangeUserB", fields: [userBId], references: [id], onDelete: Cascade)
 
   @@map("exchanges")
+}
+
+// A handwritten comment on a post — a postscript. Stroke data only, no text.
+model Comment {
+  id         String    @id @default(uuid()) @db.Uuid
+  postId     String    @map("post_id") @db.Uuid
+  userId     String    @map("user_id") @db.Uuid
+  strokeData Json      @map("stroke_data")
+  inkStyle   String    @default("standard") @map("ink_style")
+  imageUrl   String    @map("image_url")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  deletedAt  DateTime? @map("deleted_at")
+
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("comments")
+}
+
+enum LetterRequestStatus {
+  open
+  fulfilled
+  withdrawn
+}
+
+// The Request Board: someone pins a handwritten ask addressed to a specific
+// member ("draw me a heron"); the member answers with a letter of their own.
+model LetterRequest {
+  id                String              @id @default(uuid()) @db.Uuid
+  requesterId       String              @map("requester_id") @db.Uuid
+  requesteeId       String              @map("requestee_id") @db.Uuid
+  requestPostId     String              @unique @map("request_post_id") @db.Uuid
+  fulfillmentPostId String?             @unique @map("fulfillment_post_id") @db.Uuid
+  status            LetterRequestStatus @default(open)
+  createdAt         DateTime            @default(now()) @map("created_at")
+  fulfilledAt       DateTime?           @map("fulfilled_at")
+
+  requester       User  @relation("RequestsMade", fields: [requesterId], references: [id], onDelete: Cascade)
+  requestee       User  @relation("RequestsReceived", fields: [requesteeId], references: [id], onDelete: Cascade)
+  requestPost     Post  @relation("RequestAsk", fields: [requestPostId], references: [id], onDelete: Cascade)
+  fulfillmentPost Post? @relation("RequestFulfillment", fields: [fulfillmentPostId], references: [id])
+
+  @@map("letter_requests")
+}
+
+// A handwritten note left on someone's profile — same medium as a Comment,
+// pinned to a person instead of a post.
+model GuestbookEntry {
+  id         String    @id @default(uuid()) @db.Uuid
+  ownerId    String    @map("owner_id") @db.Uuid
+  authorId   String    @map("author_id") @db.Uuid
+  strokeData Json      @map("stroke_data")
+  inkStyle   String    @default("standard") @map("ink_style")
+  imageUrl   String    @map("image_url")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  deletedAt  DateTime? @map("deleted_at")
+
+  owner  User @relation("GuestbookOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  author User @relation("GuestbookAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@map("guestbook_entries")
+}
+
+// Round robin: a letter that passes through several hands, each writer adding
+// a band while seeing only a sliver of the previous one. When full, the bands
+// are composited into a single public post.
+model RoundRobin {
+  id          String    @id @default(uuid()) @db.Uuid
+  size        Int       @default(3)
+  status      String    @default("open") // open | done
+  finalPostId String?   @unique @map("final_post_id") @db.Uuid
+  createdAt   DateTime  @default(now()) @map("created_at")
+  finishedAt  DateTime? @map("finished_at")
+
+  finalPost Post?               @relation(fields: [finalPostId], references: [id])
+  sections  RoundRobinSection[]
+
+  @@map("round_robins")
+}
+
+model RoundRobinSection {
+  id         String   @id @default(uuid()) @db.Uuid
+  robinId    String   @map("robin_id") @db.Uuid
+  userId     String   @map("user_id") @db.Uuid
+  position   Int
+  strokeData Json     @map("stroke_data")
+  inkStyle   String   @default("standard") @map("ink_style")
+  imageUrl   String   @map("image_url")
+  peekUrl    String   @map("peek_url")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  robin RoundRobin @relation(fields: [robinId], references: [id], onDelete: Cascade)
+  user  User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([robinId, position])
+  @@map("round_robin_sections")
 }
 
 model Marginalium {

@@ -1,8 +1,13 @@
 import { enforceNoTextInput } from "./no-text-input";
 
 const MIN_DRAW_TIME_MS = 15_000;
+// Comments are quick marginalia — keep the bar low but high enough to deter paste-bots.
+const MIN_COMMENT_DRAW_TIME_MS = 2_000;
 
-export function validateCanvasPost(body: Record<string, unknown>): void {
+export function validateCanvasPost(
+  body: Record<string, unknown>,
+  minDrawTimeMs: number = MIN_DRAW_TIME_MS
+): void {
   enforceNoTextInput(body);
 
   const { canvas_stroke_data, drawing_duration_ms } = body as {
@@ -33,9 +38,9 @@ export function validateCanvasPost(body: Record<string, unknown>): void {
 
   const effectiveDuration = Math.max(strokeSpan, wallDuration);
 
-  if (effectiveDuration < MIN_DRAW_TIME_MS) {
+  if (effectiveDuration < minDrawTimeMs) {
     throw new Error(
-      `Drawing must span at least ${MIN_DRAW_TIME_MS / 1000} seconds. ` +
+      `Drawing must span at least ${minDrawTimeMs / 1000} seconds. ` +
         `Your drawing was only ${(effectiveDuration / 1000).toFixed(1)} seconds.`
     );
   }
@@ -68,4 +73,8 @@ export function validateCanvasPost(body: Record<string, unknown>): void {
       );
     }
   }
+}
+
+export function validateCommentStrokes(body: Record<string, unknown>): void {
+  validateCanvasPost(body, MIN_COMMENT_DRAW_TIME_MS);
 }

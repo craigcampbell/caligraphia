@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { uploadBuffer } from "@/lib/storage";
-import { renderCanvasToPng, type StrokePoint } from "@/lib/image";
+import { renderCanvasToPng, renderPostcardToPng, type StrokePoint } from "@/lib/image";
+import { sendLetterArrivedEmail } from "@/lib/email";
 import { extractOcrFromImage } from "@/lib/ocr";
 import { enforceNoTextInput } from "@/lib/no-text-input";
 import { validateCanvasPost } from "@/lib/validation";
@@ -28,6 +29,8 @@ export async function GET(request: Request) {
     // Only show public, reviewed posts in the main feed
     isPrivate: false,
     needsReview: false,
+    // Handwritten asks live on the Request Board, not in the feed
+    requestAsk: null,
   };
 
   if (userId) {
@@ -46,7 +49,7 @@ export async function GET(request: Request) {
     where,
     include: {
       user: { select: { id: true, username: true, nomDePlume: true } },
-      _count: { select: { scratches: true } },
+      _count: { select: { scratches: true, comments: true } },
     },
     orderBy: { createdAt: "desc" },
     take: limit,
@@ -87,10 +90,15 @@ export async function POST(request: Request) {
   );
 }
 
+// Postcards are a quicker format than a proper letter
+const POSTCARD_MIN_DRAW_MS = 8_000;
+
 async function handleCanvasPost(request: Request, session: { userId: string; username: string }) {
   const body = await request.json();
   enforceNoTextInput(body);
-  validateCanvasPost(body);
+
+  const format = body.format === "postcard" ? "postcard" : "letter";
+  validateCanvasPost(body, format === "postcard" ? POSTCARD_MIN_DRAW_MS : undefined);
 
   const strokeData = body.canvas_stroke_data as StrokePoint[];
   const paper = (body.paper as string) || "blank";
@@ -99,11 +107,50 @@ async function handleCanvasPost(request: Request, session: { userId: string; use
   const envelopeData = body.envelope_data || null;
   const signatureData = body.signature_data || null;
   const recipientId = body.recipient_id || null;
-  const isPrivate = body.is_private === true;
+  const isDeadLetter = body.is_dead_letter === true;
+  const isPrivate = body.is_private === true || isDeadLetter;
+  // Slow post: the letter travels overnight and arrives at 8 the next morning
+  const slowPost = body.delivery === "slow" && !!recipientId;
+  let deliverAt: Date | null = null;
+  if (slowPost) {
+    deliverAt = new Date();
+    deliverAt.setDate(deliverAt.getDate() + 1);
+    deliverAt.setHours(8, 0, 0, 0);
+  }
+  const requestOf = (body.request_of as string) || null;
+  const fulfillsRequestId = (body.fulfills_request_id as string) || null;
 
-  // Render the letter to PNG
+  // Validate request-board linkage before creating anything
+  if (requestOf) {
+    if (requestOf === session.userId) {
+      return NextResponse.json({ error: "You can't request a letter from yourself" }, { status: 400 });
+    }
+    const requestee = await prisma.user.findUnique({ where: { id: requestOf } });
+    if (!requestee) {
+      return NextResponse.json({ error: "Requestee not found" }, { status: 404 });
+    }
+  }
+
+  let fulfillingRequest = null;
+  if (fulfillsRequestId) {
+    fulfillingRequest = await prisma.letterRequest.findUnique({ where: { id: fulfillsRequestId } });
+    if (!fulfillingRequest) {
+      return NextResponse.json({ error: "Request not found" }, { status: 404 });
+    }
+    if (fulfillingRequest.requesteeId !== session.userId) {
+      return NextResponse.json({ error: "This request was addressed to someone else" }, { status: 403 });
+    }
+    if (fulfillingRequest.status !== "open") {
+      return NextResponse.json({ error: "This request is no longer open" }, { status: 409 });
+    }
+  }
+
+  // Render the letter (or postcard) to PNG
   const sharp = (await import("sharp")).default;
-  const pngBuffer = await renderCanvasToPng(strokeData, paper, inkStyle);
+  const pngBuffer =
+    format === "postcard"
+      ? await renderPostcardToPng(strokeData, paper, inkStyle)
+      : await renderCanvasToPng(strokeData, paper, inkStyle);
 
   if (previewOnly) {
     // For preview: save as a temp image, return URL but don't create DB record
@@ -132,8 +179,11 @@ async function handleCanvasPost(request: Request, session: { userId: string; use
       finalImageUrl: imageUrl,
       envelopeData: envelopeData ? (envelopeData as unknown as object) : undefined,
       signatureData: signatureData ? (signatureData as unknown as object) : undefined,
-      recipientId: recipientId || undefined,
+      recipientId: isDeadLetter ? undefined : recipientId || undefined,
       isPrivate: isPrivate,
+      format,
+      deliverAt: deliverAt || undefined,
+      isDeadLetter,
       ocrText: text,
       ocrHashtags: hashtags,
     },
@@ -142,8 +192,41 @@ async function handleCanvasPost(request: Request, session: { userId: string; use
     },
   });
 
-  if (recipientId) {
+  if (recipientId && !isDeadLetter) {
     await attachLetterToExchange(session.userId, recipientId, post.id);
+    const recipient = await prisma.user.findUnique({
+      where: { id: recipientId },
+      select: { email: true },
+    });
+    if (recipient) {
+      await sendLetterArrivedEmail(recipient.email, session.username, { slow: slowPost });
+    }
+  }
+
+  // Pin the ask to the Request Board
+  if (requestOf) {
+    await prisma.letterRequest.create({
+      data: {
+        requesterId: session.userId,
+        requesteeId: requestOf,
+        requestPostId: post.id,
+      },
+    });
+  }
+
+  // Answer an open request; guard the status so two racing answers can't both win
+  if (fulfillingRequest) {
+    const updated = await prisma.letterRequest.updateMany({
+      where: { id: fulfillingRequest.id, status: "open" },
+      data: {
+        fulfillmentPostId: post.id,
+        status: "fulfilled",
+        fulfilledAt: new Date(),
+      },
+    });
+    if (updated.count === 0) {
+      return NextResponse.json({ error: "This request is no longer open" }, { status: 409 });
+    }
   }
 
   // Reward the user with a collectible stamp for posting
@@ -207,6 +290,13 @@ async function handlePhotoPost(request: Request, session: { userId: string; user
 
   if (recipientId) {
     await attachLetterToExchange(session.userId, recipientId, post.id);
+    const recipient = await prisma.user.findUnique({
+      where: { id: recipientId },
+      select: { email: true },
+    });
+    if (recipient) {
+      await sendLetterArrivedEmail(recipient.email, session.username);
+    }
   }
 
   // Reward stamps for photo posts too

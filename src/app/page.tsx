@@ -4,6 +4,7 @@ import { AuthGuard } from "@/components/AuthGuard";
 import { NavBar } from "@/components/NavBar";
 import { Feed } from "@/components/Feed";
 import { ExchangeCard } from "@/components/ExchangeCard";
+import { DailyPromptCard } from "@/components/DailyPromptCard";
 import Link from "next/link";
 
 export default function HomePage() {
@@ -30,6 +31,9 @@ export default function HomePage() {
           </div>
         </div>
         <ExchangeCard />
+        <div className="home-prompt-wrap">
+          <DailyPromptCard />
+        </div>
         <h2 className="feed-heading">The Postbox <span className="feed-heading-sub">— letters left out for everyone</span></h2>
         <Feed />
 
@@ -83,6 +87,10 @@ export default function HomePage() {
             color: #5c4a30 !important;
             border: 1px solid #d8cfb8;
             box-shadow: none !important;
+          }
+          .home-prompt-wrap {
+            max-width: 900px; margin: 20px auto 0; padding: 0 16px;
+            display: flex; justify-content: center;
           }
           .feed-heading {
             max-width: 900px; margin: 28px auto 4px; padding: 0 16px;

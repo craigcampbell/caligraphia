@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import { AuthGuard } from "@/components/AuthGuard";
 import { NavBar } from "@/components/NavBar";
 import { Feed } from "@/components/Feed";
+import { Postscripts } from "@/components/Postscripts";
 import { useAuth } from "@/hooks/useAuth";
 
 export default function UserProfilePage() {
@@ -105,6 +106,18 @@ export default function UserProfilePage() {
             </div>
           )}
         </div>
+
+        <Postscripts
+          endpoint={`/api/users/${id}/guestbook`}
+          title="Guestbook"
+          addLabel={isSelf ? "" : "Sign the guestbook"}
+          emptyText={
+            isSelf
+              ? "Your guestbook is empty. Visitors can leave you a note in their own hand."
+              : "Nobody has signed yet — leave a note in your own hand."
+          }
+          composerLabel={`A note for ${profile.username} — in your own hand`}
+        />
 
         <Feed
           endpoint={`/api/users/${id}/posts`}
