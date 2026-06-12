@@ -191,9 +191,9 @@ export default function UserProfilePage() {
           align-items: center;
           gap: 4px;
           padding: 8px 18px;
-          background: linear-gradient(135deg, #2c3e50, #c0392b);
+          background: #1a1a1a;
           color: #fff;
-          border-radius: 20px;
+          border-radius: 8px;
           font-size: 13px;
           font-weight: 600;
           text-decoration: none;
@@ -202,7 +202,7 @@ export default function UserProfilePage() {
         }
         .send-letter-btn:hover {
           transform: translateY(-1px);
-          box-shadow: 0 4px 12px rgba(192,57,43,0.25);
+          box-shadow: 0 4px 12px rgba(0,0,0,0.18);
         }
       `}</style>
     </AuthGuard>

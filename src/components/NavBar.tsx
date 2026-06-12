@@ -4,6 +4,7 @@ import { useAuth } from "@/hooks/useAuth";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
+import { PencilIcon, EnvelopeIcon, StarIcon } from "./Icons";
 
 export function NavBar() {
   const { user, logout } = useAuth();
@@ -28,30 +29,29 @@ export function NavBar() {
     <nav className="nav">
       <div className="nav-inner">
         <Link href="/" className="nav-brand">
-          <span className="brand-mark">&#9998;</span>
-          Croquia
+          <PencilIcon size={20} className="brand-mark" />
+          Caligraphia
         </Link>
 
         {user && (
           <div className="nav-links">
             <Link href="/post/new" className="nav-link nav-write-link">
-              <span className="nav-icon">&#9998;</span>Pen a Letter
+              <PencilIcon size={14} />Pen a Letter
             </Link>
-            <Link href="/post/new?mode=draw" className="nav-link">
-              <span className="nav-icon">&#9998;</span>Draw Something
-            </Link>
+            <Link href="/post/new?mode=draw" className="nav-link">Doodle</Link>
             <Link href="/inbox" className="nav-link">
-              <span className="nav-icon">&#9993;</span>Inbox
+              <EnvelopeIcon size={14} />Inbox
             </Link>
+            <Link href="/gallery" className="nav-link" title="Walk among the letters">The Line</Link>
             <Link href="/groups" className="nav-link">Circles</Link>
             <Link href="/stamps" className="nav-link" title="Stamp Book">
-              <span className="nav-icon">&#9733;</span>Stamps
+              <StarIcon size={14} />Stamps
             </Link>
 
             {/* Stamp balance */}
             {stampBalance !== null && (
               <span className="nav-stamp-balance" title="Your stamps">
-                <span className="stamp-icon-nav">&#9733;</span>
+                <StarIcon size={13} filled />
                 <span className="stamp-count-nav">{stampBalance}</span>
               </span>
             )}
@@ -78,34 +78,31 @@ export function NavBar() {
           z-index: 100;
         }
         .nav-inner {
-          max-width: 900px;
+          max-width: 960px;
           margin: 0 auto;
           display: flex;
           align-items: center;
           justify-content: space-between;
+          gap: 16px;
           padding: 14px 20px;
         }
         .nav-brand {
-          font-size: 24px;
+          font-size: 22px;
           font-weight: 700;
           letter-spacing: -0.5px;
-          background: linear-gradient(135deg, #8e44ad, #c0392b, #d35400);
-          -webkit-background-clip: text;
-          -webkit-text-fill-color: transparent;
-          background-clip: text;
+          color: #1a1a1a;
           display: flex;
           align-items: center;
-          gap: 6px;
+          gap: 7px;
+          flex-shrink: 0;
         }
-        .brand-mark {
-          font-size: 26px;
-          background: none;
-          -webkit-text-fill-color: #c0392b;
-        }
+        .brand-mark { color: #8b4513; }
         .nav-links {
           display: flex;
           align-items: center;
-          gap: 10px;
+          gap: 8px;
+          flex-wrap: wrap;
+          justify-content: flex-end;
         }
         .nav-link {
           display: flex;
@@ -123,18 +120,18 @@ export function NavBar() {
           white-space: nowrap;
         }
         .nav-link:hover {
-          color: #1a1a2e;
+          color: #1a1a1a;
           background: rgba(0,0,0,0.04);
         }
         .nav-write-link {
-          background: rgba(192,57,43,0.08);
-          border: 1px solid rgba(192,57,43,0.15);
-          border-radius: 18px;
+          background: rgba(0,0,0,0.05);
+          border: 1px solid rgba(0,0,0,0.12);
+          border-radius: 8px;
           padding: 6px 14px;
           font-weight: 600;
         }
         .nav-write-link:hover {
-          background: rgba(192,57,43,0.14);
+          background: rgba(0,0,0,0.09);
         }
         .nav-icon { font-size: 16px; line-height: 1; }
         .nav-av { border-radius: 50%; object-fit: cover; }
@@ -150,7 +147,7 @@ export function NavBar() {
           padding: 4px 10px;
           background: #fef9e8;
           border: 1px solid #e8d5a0;
-          border-radius: 14px;
+          border-radius: 8px;
           font-size: 13px;
           color: #8b6914;
           cursor: default;

@@ -1,12 +1,15 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { ensureDailyStamps, DAILY_STAMP_ALLOWANCE } from "@/lib/stamps";
 
 export async function GET() {
   const session = await getSession();
   if (!session) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
+
+  await ensureDailyStamps(prisma, session.userId);
 
   const user = await prisma.user.findUnique({
     where: { id: session.userId },
@@ -37,6 +40,7 @@ export async function GET() {
 
   return NextResponse.json({
     balance: user.stampBalance,
+    dailyAllowance: DAILY_STAMP_ALLOWANCE,
     totalEarned: user.totalStampsEarned,
     unspentCount,
     commonCount,

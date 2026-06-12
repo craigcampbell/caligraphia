@@ -86,41 +86,41 @@ function SignupContent() {
           padding: 16px; background: linear-gradient(170deg, #fefcf8 0%, #f5efe0 40%, #faf4ec 100%);
         }
         .signup-card {
-          background: #fffef9; border: 1px solid #e0d5c0; border-radius: 20px;
+          background: #fffef9; border: 1px solid #e0d5c0; border-radius: 8px;
           padding: 48px 40px; max-width: 430px; width: 100%;
           box-shadow: 0 4px 32px rgba(80,40,20,0.06);
         }
-        .brand-mark { font-size: 48px; text-align: center; color: #c0392b; margin-bottom: 4px; }
+        .brand-mark { font-size: 48px; text-align: center; color: #1a1a1a; margin-bottom: 4px; }
         .signup-title {
           font-size: 26px; font-weight: 700; text-align: center; margin-bottom: 24px;
-          background: linear-gradient(135deg, #1a1a2e, #8e44ad, #c0392b);
+          background: #1a1a1a;
           -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
         }
         .signup-form { display: flex; flex-direction: column; gap: 12px; }
         .input-label { font-size: 13px; font-weight: 500; color: #6b5c40; }
         .hint-text { font-size: 11px; color: #b0a090; font-weight: 400; font-style: italic; }
         .username-input {
-          padding: 14px 16px; border: 2px solid #27ae60; border-radius: 12px;
+          padding: 14px 16px; border: 2px solid #27ae60; border-radius: 6px;
           font-size: 16px; font-family: inherit; outline: none; background: #f4faf6;
           user-select: text; -webkit-user-select: text;
         }
-        .username-input:focus { border-color: #1a1a2e; }
+        .username-input:focus { border-color: #1a1a1a; }
         .nom-upload { display: flex; align-items: center; gap: 12px; }
         .btn-upload-av {
-          padding: 12px 24px; border: 2px dashed #d8cfb8; border-radius: 12px;
+          padding: 12px 24px; border: 2px dashed #d8cfb8; border-radius: 6px;
           background: #fefdf9; cursor: pointer; font-size: 14px; color: #8c7a60; font-family: inherit;
         }
         .btn-upload-av:hover { border-color: #b0a090; }
         .nom-preview { width: 80px; height: 80px; border-radius: 50%; object-fit: cover; border: 2px solid #e0d5c0; }
         .btn-signup {
           margin-top: 12px; padding: 15px;
-          background: linear-gradient(135deg, #2c3e50, #8e44ad);
-          color: #fff; border: none; border-radius: 12px;
+          background: #1a1a1a;
+          color: #fff; border: none; border-radius: 6px;
           font-size: 16px; font-weight: 700; cursor: pointer; font-family: inherit;
-          box-shadow: 0 4px 16px rgba(142,68,173,0.25);
+          box-shadow: 0 4px 16px rgba(0,0,0,0.18);
           transition: transform 0.15s, box-shadow 0.15s;
         }
-        .btn-signup:hover { transform: translateY(-1px); box-shadow: 0 6px 24px rgba(142,68,173,0.35); }
+        .btn-signup:hover { transform: translateY(-1px); box-shadow: 0 6px 24px rgba(0,0,0,0.18); }
         .btn-signup:disabled { background: #c0b8a8; box-shadow: none; cursor: not-allowed; }
         .err-msg { color: #c0392b; font-size: 13px; }
       `}</style>
@@ -130,7 +130,7 @@ function SignupContent() {
 
 export default function SignupPage() {
   return (
-    <Suspense fallback={<div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:"#faf7f0"}}><div style={{width:32,height:32,border:"3px solid #ddd",borderTopColor:"#8e44ad",borderRadius:"50%",animation:"spin 0.8s linear infinite"}} /></div>}>
+    <Suspense fallback={<div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:"#faf7f0"}}><div style={{width:32,height:32,border:"3px solid #ddd",borderTopColor:"#1a1a1a",borderRadius:"50%",animation:"spin 0.8s linear infinite"}} /></div>}>
       <SignupContent />
     </Suspense>
   );

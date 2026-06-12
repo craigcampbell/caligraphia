@@ -1,12 +1,14 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { uploadBuffer, getPublicUrl } from "@/lib/storage";
+import { uploadBuffer } from "@/lib/storage";
 import { renderCanvasToPng, type StrokePoint } from "@/lib/image";
 import { extractOcrFromImage } from "@/lib/ocr";
 import { enforceNoTextInput } from "@/lib/no-text-input";
 import { validateCanvasPost } from "@/lib/validation";
 import { rateLimitPostCreation } from "@/lib/rate-limit";
+import { groupHashtagLiterals } from "@/lib/tags";
+import { attachLetterToExchange } from "@/lib/exchange";
 import { v4 as uuidv4 } from "uuid";
 
 export async function GET(request: Request) {
@@ -23,8 +25,9 @@ export async function GET(request: Request) {
 
   const where: Record<string, unknown> = {
     deletedAt: null,
-    // Only show public posts in the main feed
+    // Only show public, reviewed posts in the main feed
     isPrivate: false,
+    needsReview: false,
   };
 
   if (userId) {
@@ -33,47 +36,17 @@ export async function GET(request: Request) {
 
   if (groupId) {
     const group = await prisma.group.findUnique({ where: { id: groupId } });
-    if (group) {
-      const posts = await prisma.post.findMany({
-        where: {
-          deletedAt: null,
-          ocrHashtags: { hasSome: [] },
-        },
-        include: {
-          user: { select: { id: true, username: true, nomDePlume: true } },
-        },
-        orderBy: { createdAt: "desc" },
-        take: limit,
-        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-      });
-
-      let pattern: RegExp;
-      try {
-        pattern = new RegExp(group.tagPattern, "i");
-      } catch {
-        pattern = new RegExp(".*", "i");
-      }
-
-      const filtered = posts.filter(
-        (p) => p.ocrHashtags.some((h) => pattern.test(h))
-      );
-
-      const nextCursor =
-        filtered.length === limit ? filtered[filtered.length - 1].id : null;
-      return NextResponse.json({ posts: filtered, nextCursor });
+    if (!group) {
+      return NextResponse.json({ error: "Group not found" }, { status: 404 });
     }
+    where.ocrHashtags = { hasSome: groupHashtagLiterals(group.tagPattern) };
   }
 
   const posts = await prisma.post.findMany({
     where,
     include: {
       user: { select: { id: true, username: true, nomDePlume: true } },
-      _count: {
-        select: {
-          interactions: { where: { interactionType: "like" } },
-          scratches: true,
-        },
-      },
+      _count: { select: { scratches: true } },
     },
     orderBy: { createdAt: "desc" },
     take: limit,
@@ -83,16 +56,7 @@ export async function GET(request: Request) {
   const nextCursor =
     posts.length === limit ? posts[posts.length - 1].id : null;
 
-  const enriched = await Promise.all(
-    posts.map(async (post) => {
-      const dislikes = await prisma.postInteraction.count({
-        where: { postId: post.id, interactionType: "dislike" },
-      });
-      return { ...post, dislikeCount: dislikes };
-    })
-  );
-
-  return NextResponse.json({ posts: enriched, nextCursor });
+  return NextResponse.json({ posts, nextCursor });
 }
 
 export async function POST(request: Request) {
@@ -178,8 +142,12 @@ async function handleCanvasPost(request: Request, session: { userId: string; use
     },
   });
 
-  // Reward the user with stamps for posting
-  await giveStampReward(session.userId, post.id);
+  if (recipientId) {
+    await attachLetterToExchange(session.userId, recipientId, post.id);
+  }
+
+  // Reward the user with a collectible stamp for posting
+  await giveStampReward(session.userId);
 
   return NextResponse.json({ post }, { status: 201 });
 }
@@ -214,6 +182,13 @@ async function handlePhotoPost(request: Request, session: { userId: string; user
 
   const { text, hashtags } = await extractOcrFromImage(photoBuffer);
 
+  // Light handwriting gate: a public photo that OCR can't find any writing in
+  // gets held for review instead of landing in the feed. Private letters are
+  // between sender and recipient, so they skip the gate.
+  const letterChars = text.replace(/[^a-zA-Z]/g, "").length;
+  const looksHandwritten = letterChars >= 10 || hashtags.length > 0;
+  const needsReview = !isPrivate && !looksHandwritten;
+
   const post = await prisma.post.create({
     data: {
       userId: session.userId,
@@ -221,6 +196,7 @@ async function handlePhotoPost(request: Request, session: { userId: string; user
       uploadedPhotoUrl: photoUrl,
       recipientId: recipientId || undefined,
       isPrivate: isPrivate,
+      needsReview,
       ocrText: text,
       ocrHashtags: hashtags,
     },
@@ -229,55 +205,67 @@ async function handlePhotoPost(request: Request, session: { userId: string; user
     },
   });
 
-  // Reward stamps for photo posts too
-  await giveStampReward(session.userId, post.id);
-
-  return NextResponse.json({ post }, { status: 201 });
-}
-
-// Reward a user with stamps for creating a post
-async function giveStampReward(userId: string, postId: string) {
-  // Generate or find a default common stamp design
-  let design = await prisma.stampDesign.findFirst({
-    where: { tier: "Common", name: "Standard Postage" },
-  });
-
-  if (!design) {
-    design = await prisma.stampDesign.create({
-      data: {
-        name: "Standard Postage",
-        imageUrl: "/stamps/common.png",
-        tier: "Common",
-        totalMinted: 999999,
-        currentlyMinted: 0,
-      },
-    });
+  if (recipientId) {
+    await attachLetterToExchange(session.userId, recipientId, post.id);
   }
 
-  // Create the stamp
-  const currentCount = await prisma.stamp.count();
-  await prisma.stamp.create({
-    data: {
-      ownerId: userId,
-      designId: design.id,
-      tier: "Common",
-      issueNumber: currentCount + 1,
-      series: "Standard Issue",
-    },
-  });
+  // Reward stamps for photo posts too
+  await giveStampReward(session.userId);
 
-  // Update user's stamp balance
-  await prisma.user.update({
-    where: { id: userId },
-    data: {
-      stampBalance: { increment: 1 },
-      totalStampsEarned: { increment: 1 },
+  return NextResponse.json(
+    {
+      post,
+      ...(needsReview
+        ? {
+            notice:
+              "We couldn't find handwriting in this photo, so it's held for review before appearing in the public feed.",
+          }
+        : {}),
     },
-  });
+    { status: 201 }
+  );
+}
 
-  // Update design mint count
-  await prisma.stampDesign.update({
-    where: { id: design.id },
-    data: { currentlyMinted: { increment: 1 } },
+// Reward a user with a collectible stamp (and +1 spendable) for creating a post
+async function giveStampReward(userId: string) {
+  await prisma.$transaction(async (tx) => {
+    let design = await tx.stampDesign.findFirst({
+      where: { tier: "Common", name: "Standard Postage" },
+    });
+
+    if (!design) {
+      design = await tx.stampDesign.create({
+        data: {
+          name: "Standard Postage",
+          imageUrl: "/stamps/common.png",
+          tier: "Common",
+          totalMinted: 999999,
+          currentlyMinted: 0,
+        },
+      });
+    }
+
+    const updatedDesign = await tx.stampDesign.update({
+      where: { id: design.id },
+      data: { currentlyMinted: { increment: 1 } },
+    });
+
+    await tx.stamp.create({
+      data: {
+        ownerId: userId,
+        designId: design.id,
+        tier: "Common",
+        issueNumber: updatedDesign.currentlyMinted,
+        series: "Standard Issue",
+      },
+    });
+
+    await tx.user.update({
+      where: { id: userId },
+      data: {
+        stampBalance: { increment: 1 },
+        totalStampsEarned: { increment: 1 },
+      },
+    });
   });
 }

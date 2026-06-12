@@ -1,5 +1,5 @@
 {
-  "name": "croquia",
+  "name": "caligraphia",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -7,13 +7,16 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
     "db:push": "prisma db push",
     "db:generate": "prisma generate",
-    "db:seed": "tsx scripts/seed.ts"
+    "db:seed": "tsx scripts/seed.ts",
+    "db:seed-demo": "tsx scripts/seed-demo.ts"
   },
   "dependencies": {
-    "@prisma/client": "^5.22.0",
     "@napi-rs/canvas": "^0.1.65",
+    "@prisma/client": "^5.22.0",
     "cookie": "^0.7.2",
     "jsonwebtoken": "^9.0.2",
     "minio": "^8.0.1",
@@ -33,6 +36,7 @@
     "@types/uuid": "^10.0.0",
     "prisma": "^5.22.0",
     "tsx": "^4.19.0",
-    "typescript": "^5.6.0"
+    "typescript": "^5.6.0",
+    "vitest": "^4.1.8"
   }
 }

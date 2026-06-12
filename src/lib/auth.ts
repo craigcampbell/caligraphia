@@ -2,9 +2,23 @@ import jwt from "jsonwebtoken";
 import { cookies } from "next/headers";
 import { prisma } from "./prisma";
 
-const JWT_SECRET = process.env.JWT_SECRET || "dev-secret-change-in-production";
-const MAGIC_LINK_SECRET =
-  process.env.MAGIC_LINK_SECRET || "magic-link-dev-secret";
+// Validated lazily (not at module load) so `next build` can import routes;
+// any real sign/verify in production with a missing secret still fails fast.
+function requireSecret(name: string, devFallback: string): string {
+  const value = process.env[name];
+  if (value && value !== devFallback) return value;
+  if (process.env.NODE_ENV === "production") {
+    throw new Error(
+      `${name} must be set to a real secret in production (got ${value ? "the dev fallback" : "nothing"})`
+    );
+  }
+  return value || devFallback;
+}
+
+const jwtSecret = () =>
+  requireSecret("JWT_SECRET", "dev-secret-change-in-production");
+const magicLinkSecret = () =>
+  requireSecret("MAGIC_LINK_SECRET", "magic-link-dev-secret");
 const SESSION_COOKIE = "croquis_session";
 const MAGIC_LINK_EXPIRY = "10m";
 const SESSION_EXPIRY = "7d";
@@ -19,19 +33,19 @@ export interface MagicLinkPayload {
 }
 
 export function signMagicToken(email: string): string {
-  return jwt.sign({ email }, MAGIC_LINK_SECRET, { expiresIn: MAGIC_LINK_EXPIRY });
+  return jwt.sign({ email }, magicLinkSecret(), { expiresIn: MAGIC_LINK_EXPIRY });
 }
 
 export function verifyMagicToken(token: string): MagicLinkPayload {
-  return jwt.verify(token, MAGIC_LINK_SECRET) as MagicLinkPayload;
+  return jwt.verify(token, magicLinkSecret()) as MagicLinkPayload;
 }
 
 export function signSessionToken(payload: SessionPayload): string {
-  return jwt.sign(payload, JWT_SECRET, { expiresIn: SESSION_EXPIRY });
+  return jwt.sign(payload, jwtSecret(), { expiresIn: SESSION_EXPIRY });
 }
 
 export function verifySessionToken(token: string): SessionPayload {
-  return jwt.verify(token, JWT_SECRET) as SessionPayload;
+  return jwt.verify(token, jwtSecret()) as SessionPayload;
 }
 
 export async function setSessionCookie(payload: SessionPayload): Promise<void> {

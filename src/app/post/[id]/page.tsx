@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
 import { AuthGuard } from "@/components/AuthGuard";
 import { NavBar } from "@/components/NavBar";
-import { Interactions } from "@/components/Interactions";
+import { StampButton } from "@/components/StampButton";
 import { ScratchOverlay } from "@/components/ScratchOverlay";
 import { DrawingReplay } from "@/components/DrawingReplay";
 import { useAuth } from "@/hooks/useAuth";
@@ -111,11 +111,10 @@ export default function PostDetailPage() {
           </Link>
 
           <div className="detail-actions-row">
-            <Interactions
+            <StampButton
               postId={post.id}
-              initialLikeCount={post._count?.interactions ?? 0}
-              initialDislikeCount={post.dislikeCount ?? 0}
-              initialUserInteraction={post.userInteraction?.interactionType ?? null}
+              initialStampCount={post.stampCount ?? 0}
+              initialStamped={!!post.stamped}
             />
             <button
               onClick={() => setScratchMode(true)}
@@ -283,7 +282,7 @@ export default function PostDetailPage() {
           color: #e53e3e;
         }
         .detail-image-wrapper {
-          border-radius: 12px;
+          border-radius: 6px;
           overflow: hidden;
           background: #fafafa;
           margin-bottom: 16px;
@@ -309,7 +308,7 @@ export default function PostDetailPage() {
           color: #666;
           background: #f0f0f0;
           padding: 4px 10px;
-          border-radius: 12px;
+          border-radius: 6px;
         }
         .detail-scratches {
           margin-top: 24px;

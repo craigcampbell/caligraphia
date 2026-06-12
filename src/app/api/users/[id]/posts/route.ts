@@ -16,15 +16,15 @@ export async function GET(
   const limit = Math.min(parseInt(searchParams.get("limit") || "20", 10), 50);
 
   const posts = await prisma.post.findMany({
-    where: { userId: params.id, deletedAt: null },
+    where: {
+      userId: params.id,
+      deletedAt: null,
+      // Private letters belong to sender and recipient, not profile visitors
+      ...(params.id === session.userId ? {} : { isPrivate: false }),
+    },
     include: {
       user: { select: { id: true, username: true, nomDePlume: true } },
-      _count: {
-        select: {
-          interactions: { where: { interactionType: "like" } },
-          scratches: true,
-        },
-      },
+      _count: { select: { scratches: true } },
     },
     orderBy: { createdAt: "desc" },
     take: limit,
@@ -34,14 +34,5 @@ export async function GET(
   const nextCursor =
     posts.length === limit ? posts[posts.length - 1].id : null;
 
-  const enriched = await Promise.all(
-    posts.map(async (post) => {
-      const dislikes = await prisma.postInteraction.count({
-        where: { postId: post.id, interactionType: "dislike" },
-      });
-      return { ...post, dislikeCount: dislikes };
-    })
-  );
-
-  return NextResponse.json({ posts: enriched, nextCursor });
+  return NextResponse.json({ posts, nextCursor });
 }

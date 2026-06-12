@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { groupHashtagLiterals } from "@/lib/tags";
 
 export async function GET(
   request: Request,
@@ -20,43 +21,25 @@ export async function GET(
   const cursor = searchParams.get("cursor");
   const limit = Math.min(parseInt(searchParams.get("limit") || "20", 10), 50);
 
-  let pattern: RegExp;
-  try {
-    pattern = new RegExp(group.tagPattern, "i");
-  } catch {
-    return NextResponse.json(
-      { error: "Group has invalid tag pattern" },
-      { status: 500 }
-    );
-  }
+  const tags = groupHashtagLiterals(group.tagPattern);
 
-  const allPosts = await prisma.post.findMany({
-    where: { deletedAt: null },
+  const posts = await prisma.post.findMany({
+    where: {
+      deletedAt: null,
+      isPrivate: false,
+      needsReview: false,
+      ocrHashtags: { hasSome: tags },
+    },
     include: {
       user: { select: { id: true, username: true, nomDePlume: true } },
-      _count: { select: { interactions: { where: { interactionType: "like" } }, scratches: true } },
+      _count: { select: { scratches: true } },
     },
     orderBy: { createdAt: "desc" },
-    take: limit * 5,
+    take: limit,
     ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
   });
 
-  const filtered = allPosts.filter(
-    (p) => p.ocrHashtags.some((h) => pattern.test(h))
-  );
+  const nextCursor = posts.length === limit ? posts[posts.length - 1].id : null;
 
-  const truncated = filtered.slice(0, limit);
-  const nextCursor =
-    filtered.length > limit ? filtered[limit - 1].id : null;
-
-  const enriched = await Promise.all(
-    truncated.map(async (post) => {
-      const dislikes = await prisma.postInteraction.count({
-        where: { postId: post.id, interactionType: "dislike" },
-      });
-      return { ...post, dislikeCount: dislikes };
-    })
-  );
-
-  return NextResponse.json({ posts: enriched, nextCursor });
+  return NextResponse.json({ posts, nextCursor });
 }

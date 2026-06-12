@@ -1,6 +1,20 @@
 # Croquia — Vision & Evolution
 
-> *"A social network where every post is a sketch, every letter is a drawing, and the economy runs on stamps."*
+> *"Letters in your own hand, written for one person at a time."*
+
+---
+
+## ⚠ Course Correction — June 2026
+
+This document predates [ASSESSMENT.md](./ASSESSMENT.md), which is now the operative roadmap. The reframe: **Croquia is correspondence-first, not Instagram-for-handwriting.** The inbox, 1:1 letters, reply chains, and the **Letter Exchange** (pair two strangers, each writes the other a letter) are the product; the public feed is the lobby, not the building.
+
+Status of the sections below:
+
+- **§1 (Core Identity), §2 (Canvas), §5 (Experience Layers)** — still the soul of the product. Build from here.
+- **§3 (Stamps Economy)** — **dropped as an economy.** Stamps survived as the *single* reaction with a free daily allowance (no rarity tiers, no scarcity, no burning, no anti-farming). Stamp *designs* may return later as cosmetic collectibles only.
+- **§4 (Instagram-Like Feed)** — **dropped.** No vertical swipe feed, no CLIP embeddings, no auto-scroll. Envelopes on a table is the genre.
+- **§6 (Cloud & Scaling), §7.2–7.3 (queues, feed perf)** — **parked as someday-reference.** Until ~5k users the entire infra story is one small VPS + S3-compatible storage + Cloudflare, at $20–50/month.
+- **§8 roadmap** — superseded by the kanban in ASSESSMENT.md.
 
 ---
 
@@ -119,7 +133,7 @@ When "sealing and sending" a letter, the user draws their **handwritten signatur
 
 ### 3.1 Conceptual Design
 
-In postal history, stamps are prepaid proof of postage. In Caligraphia, stamps are:
+In postal history, stamps are prepaid proof of postage. In Croquia, stamps are:
 
 - **A unit of social currency** — you earn stamps by creating quality handwritten content
 - **A method of "mittance"** (remittance) — sending stamps to another user is like sending them a small gift/value
@@ -595,7 +609,7 @@ This prevents the 5-second canvas render from blocking the HTTP response and let
 
 ## Appendix A: "X Factor" Features
 
-These are the "wouldn't it be cool if..." ideas that could define Caligraphia's identity:
+These are the "wouldn't it be cool if..." ideas that could define Croquia's identity:
 
 **1. The Midnight Post**
 If you post between 2-4 AM, your letter gets a subtle "night ink" variant — a darker paper, silver ink, and a moon watermark. No notification. It's a secret treat for night owls.

@@ -1,4 +1,5 @@
 import Tesseract from "tesseract.js";
+import { extractHashtags } from "./tags";
 
 export async function extractOcrFromImage(
   imageBuffer: Buffer
@@ -11,8 +12,5 @@ export async function extractOcrFromImage(
 
   const cleanText = text.trim();
 
-  const hashtagRegex = /#[a-zA-Z0-9_]+/g;
-  const hashtags = [...new Set(cleanText.match(hashtagRegex) || [])];
-
-  return { text: cleanText, hashtags };
+  return { text: cleanText, hashtags: extractHashtags(cleanText) };
 }

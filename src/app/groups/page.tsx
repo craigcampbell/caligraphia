@@ -168,7 +168,7 @@ export default function GroupsPage() {
         .btn-create-group:hover { background: #333; }
         .create-group-form {
           border: 1px solid #e8e8e8;
-          border-radius: 12px;
+          border-radius: 6px;
           padding: 20px;
           margin-bottom: 24px;
           background: #fafafa;
@@ -203,7 +203,7 @@ export default function GroupsPage() {
         .suggestion-chip {
           padding: 6px 12px;
           border: 1px solid #ddd;
-          border-radius: 16px;
+          border-radius: 8px;
           background: #fff;
           cursor: pointer;
           font-size: 13px;
@@ -278,7 +278,7 @@ export default function GroupsPage() {
           display: block;
           padding: 20px;
           border: 1px solid #e8e8e8;
-          border-radius: 12px;
+          border-radius: 6px;
           text-decoration: none;
           transition: box-shadow 0.15s;
         }

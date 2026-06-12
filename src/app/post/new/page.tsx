@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { AuthGuard } from "@/components/AuthGuard";
 import { NavBar } from "@/components/NavBar";
@@ -19,7 +19,7 @@ interface Recipient {
   nomDePlume: string | null;
 }
 
-export default function NewPostPage() {
+function NewPostContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { user } = useAuth();
@@ -299,7 +299,7 @@ export default function NewPostPage() {
         }
         .pg-title {
           font-size: 32px; font-weight: 700; text-align: center;
-          background: linear-gradient(135deg, #1a1a2e, #8e44ad, #c0392b);
+          background: #1a1a1a;
           -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
           margin-bottom: 6px;
         }
@@ -307,7 +307,7 @@ export default function NewPostPage() {
         .mode-choose { max-width: 500px; margin: 0 auto; padding-top: 40px; }
         .mode-btns { display: flex; flex-direction: column; gap: 12px; }
         .mode-btn {
-          width: 100%; padding: 24px 20px; border: 2px solid #e0d5c0; border-radius: 16px;
+          width: 100%; padding: 24px 20px; border: 2px solid #e0d5c0; border-radius: 8px;
           background: #fefdf9; cursor: pointer; display: flex;
           align-items: center; gap: 14px; transition: all 0.2s; font-family: inherit;
         }
@@ -348,7 +348,7 @@ export default function NewPostPage() {
           gap: 14px;
           padding: 16px;
           border: 2px solid #e0d5c0;
-          border-radius: 14px;
+          border-radius: 8px;
           background: #fefdf9;
           cursor: pointer;
           font-family: inherit;
@@ -394,19 +394,19 @@ export default function NewPostPage() {
         .send-final-btn {
           padding: 14px 40px;
           border: none;
-          border-radius: 28px;
-          background: linear-gradient(135deg, #2c3e50, #c0392b);
+          border-radius: 8px;
+          background: #1a1a1a;
           color: #fff;
           font-weight: 700;
           font-size: 16px;
           cursor: pointer;
           font-family: inherit;
-          box-shadow: 0 4px 16px rgba(192,57,43,0.25);
+          box-shadow: 0 4px 16px rgba(0,0,0,0.18);
           transition: all 0.15s;
         }
         .send-final-btn:hover:not(:disabled) {
           transform: translateY(-1px);
-          box-shadow: 0 6px 24px rgba(192,57,43,0.35);
+          box-shadow: 0 6px 24px rgba(0,0,0,0.18);
         }
         .send-final-btn:disabled {
           opacity: 0.5;
@@ -414,7 +414,7 @@ export default function NewPostPage() {
         }
         .err-banner {
           background: #fef5f5; border: 1px solid #f5c6cb; color: #c0392b;
-          padding: 12px 16px; border-radius: 10px; margin-bottom: 16px; text-align: center; font-size: 14px;
+          padding: 12px 16px; border-radius: 6px; margin-bottom: 16px; text-align: center; font-size: 14px;
         }
         .submit-overlay {
           position: fixed; inset: 0; background: rgba(250,247,240,0.92);
@@ -423,11 +423,19 @@ export default function NewPostPage() {
         }
         .splat-spinner {
           width: 48px; height: 48px; border-radius: 50%;
-          border: 4px solid #e0d5c0; border-top-color: #c0392b;
+          border: 4px solid #e0d5c0; border-top-color: #1a1a1a;
           animation: ink-spin 0.7s linear infinite;
         }
         @keyframes ink-spin { to { transform: rotate(360deg); } }
       `}</style>
     </AuthGuard>
+  );
+}
+
+export default function NewPostPage() {
+  return (
+    <Suspense fallback={null}>
+      <NewPostContent />
+    </Suspense>
   );
 }

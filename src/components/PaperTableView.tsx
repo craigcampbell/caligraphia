@@ -11,7 +11,7 @@ interface PaperPost {
   stampCount: number;
   createdAt: string;
   user: { id: string; username: string; nomDePlume: string | null; };
-  _count: { interactions: number; scratches: number; };
+  _count: { scratches: number; };
 }
 
 interface Props {
@@ -52,14 +52,18 @@ export function PaperTableView({ posts, onStamp, isStamping, onLoadMore, hasMore
   const [panX, setPanX] = useState(200);
   const [panY, setPanY] = useState(100);
   const [draggedPositions, setDraggedPositions] = useState<Record<string, { x: number; y: number }>>({});
+  const [paperRotations, setPaperRotations] = useState<Record<string, number>>({});
 
   const tableRef = useRef<HTMLDivElement>(null);
   const panning = useRef(false);
   const dragging = useRef(false);
   const draggingPaper = useRef<string | null>(null);
-  const dragOffset = useRef({ x: 0, y: 0 });
   const lastPos = useRef({ x: 0, y: 0 });
   const startPos = useRef({ x: 0, y: 0 });
+
+  // Multi-pointer tracking for two-finger rotate
+  const activePointers = useRef<Map<number, { x: number; y: number; paperId: string | null }>>(new Map());
+  const rotGesture = useRef<{ pid: string; ptr1: number; ptr2: number; initAngle: number; initRotation: number } | null>(null);
 
   const layouts = useMemo(() => posts.map((p, i) => computeLayout(p, i, posts.length)), [posts]);
 
@@ -70,20 +74,41 @@ export function PaperTableView({ posts, onStamp, isStamping, onLoadMore, hasMore
     if (-panY + window.innerHeight > maxY - 600 && onLoadMore) onLoadMore();
   }, [panY, maxY, hasMore, loading, onLoadMore]);
 
+  const getLayoutForId = useCallback((pid: string) => layouts.find((_, i) => posts[i]?.id === pid), [layouts, posts]);
+
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
     const target = e.target as HTMLElement;
     const paperEl = target.closest('[data-paper-id]') as HTMLElement | null;
+    const pid = paperEl?.dataset.paperId ?? null;
 
+    activePointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY, paperId: pid });
     startPos.current = { x: e.clientX, y: e.clientY };
     lastPos.current = { x: e.clientX, y: e.clientY };
 
-    if (paperEl) {
-      const pid = paperEl.dataset.paperId!;
+    // Check if a second pointer just landed on the same paper → start rotation gesture
+    if (pid && !rotGesture.current) {
+      const sibling = [...activePointers.current.entries()].find(([id, p]) => id !== e.pointerId && p.paperId === pid);
+      if (sibling) {
+        const [sibId, sibData] = sibling;
+        const dx = e.clientX - sibData.x;
+        const dy = e.clientY - sibData.y;
+        const layout = getLayoutForId(pid);
+        rotGesture.current = {
+          pid,
+          ptr1: sibId,
+          ptr2: e.pointerId,
+          initAngle: Math.atan2(dy, dx),
+          initRotation: paperRotations[pid] ?? layout?.rotation ?? 0,
+        };
+        draggingPaper.current = null;
+        dragging.current = false;
+        panning.current = false;
+        return;
+      }
+    }
+
+    if (pid) {
       draggingPaper.current = pid;
-      dragOffset.current = {
-        x: e.clientX - (draggedPositions[pid]?.x ?? layouts.find((_, i) => posts[i]?.id === pid)?.x ?? 0) - panX,
-        y: e.clientY - (draggedPositions[pid]?.y ?? layouts.find((_, i) => posts[i]?.id === pid)?.y ?? 0) - panY,
-      };
       dragging.current = false;
       panning.current = false;
     } else {
@@ -92,19 +117,34 @@ export function PaperTableView({ posts, onStamp, isStamping, onLoadMore, hasMore
       dragging.current = false;
     }
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
-  }, [panX, panY, draggedPositions, layouts, posts]);
+  }, [panX, panY, draggedPositions, layouts, posts, paperRotations, getLayoutForId]);
 
   const handlePointerMove = useCallback((e: React.PointerEvent) => {
-    const dx = e.clientX - lastPos.current.x;
-    const dy = e.clientY - lastPos.current.y;
+    const prev = activePointers.current.get(e.pointerId);
+    const dx = e.clientX - (prev?.x ?? lastPos.current.x);
+    const dy = e.clientY - (prev?.y ?? lastPos.current.y);
     const totalDist = Math.abs(e.clientX - startPos.current.x) + Math.abs(e.clientY - startPos.current.y);
     lastPos.current = { x: e.clientX, y: e.clientY };
+    activePointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY, paperId: prev?.paperId ?? null });
+
+    // Two-finger rotation gesture
+    if (rotGesture.current && (e.pointerId === rotGesture.current.ptr1 || e.pointerId === rotGesture.current.ptr2)) {
+      const g = rotGesture.current;
+      const p1 = activePointers.current.get(g.ptr1);
+      const p2 = activePointers.current.get(g.ptr2);
+      if (p1 && p2) {
+        const currentAngle = Math.atan2(p2.y - p1.y, p2.x - p1.x);
+        const delta = (currentAngle - g.initAngle) * (180 / Math.PI);
+        setPaperRotations(prev => ({ ...prev, [g.pid]: g.initRotation + delta }));
+      }
+      return;
+    }
 
     if (draggingPaper.current) {
       if (totalDist > 10) dragging.current = true;
       if (dragging.current) {
         const pid = draggingPaper.current;
-        const layout = layouts.find((_, i) => posts[i]?.id === pid);
+        const layout = getLayoutForId(pid);
         if (layout) {
           const baseX = draggedPositions[pid]?.x ?? layout.x;
           const baseY = draggedPositions[pid]?.y ?? layout.y;
@@ -118,14 +158,22 @@ export function PaperTableView({ posts, onStamp, isStamping, onLoadMore, hasMore
       setPanX(p => p + dx);
       setPanY(p => p + dy);
     }
-  }, [layouts, posts, draggedPositions]);
+  }, [layouts, posts, draggedPositions, getLayoutForId]);
 
   const handlePointerUp = useCallback((e: React.PointerEvent) => {
     const totalDist = Math.abs(e.clientX - startPos.current.x) + Math.abs(e.clientY - startPos.current.y);
+
+    // End rotation gesture if one of its pointers lifted
+    if (rotGesture.current && (e.pointerId === rotGesture.current.ptr1 || e.pointerId === rotGesture.current.ptr2)) {
+      rotGesture.current = null;
+      activePointers.current.delete(e.pointerId);
+      return;
+    }
+
     if (draggingPaper.current && totalDist < 10) {
-      // It was a tap — open the paper
       setPickedUp(draggingPaper.current);
     }
+    activePointers.current.delete(e.pointerId);
     draggingPaper.current = null;
     dragging.current = false;
     panning.current = false;
@@ -188,6 +236,7 @@ export function PaperTableView({ posts, onStamp, isStamping, onLoadMore, hasMore
           const dragPos = draggedPositions[post.id];
           const x = dragPos?.x ?? layout.x;
           const y = dragPos?.y ?? layout.y;
+          const rotation = paperRotations[post.id] ?? layout.rotation;
           const imageUrl = post.finalImageUrl || post.uploadedPhotoUrl;
           const isDragging = dragging.current && draggingPaper.current === post.id;
           return (
@@ -197,7 +246,7 @@ export function PaperTableView({ posts, onStamp, isStamping, onLoadMore, hasMore
               className={`pt-paper ${isDragging ? "dragging" : ""}`}
               style={{
                 left: x, top: y,
-                transform: `rotate(${layout.rotation}deg) scale(${layout.scale})`,
+                transform: `rotate(${rotation}deg) scale(${layout.scale})`,
                 width: PAPER_W,
                 zIndex: isDragging ? 100 : 1,
               }}
@@ -245,7 +294,7 @@ export function PaperTableView({ posts, onStamp, isStamping, onLoadMore, hasMore
         .pt-paper-author { font-weight: 600; color: #5c4a30; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 90px; }
         .pt-paper-stamp { color: #8b6914; }
         .pt-picked-overlay { position: fixed; inset: 0; z-index: 500; background: rgba(20,18,14,0.7); display: flex; align-items: center; justify-content: center; padding: 20px; backdrop-filter: blur(4px); }
-        .pt-picked-card { max-width: 480px; width: 100%; max-height: 90vh; background: #fefdf9; border-radius: 12px; overflow: hidden; box-shadow: 0 20px 60px rgba(0,0,0,0.4); position: relative; animation: pt-lift 0.25s ease-out; }
+        .pt-picked-card { max-width: 480px; width: 100%; max-height: 90vh; background: #fefdf9; border-radius: 6px; overflow: hidden; box-shadow: 0 20px 60px rgba(0,0,0,0.4); position: relative; animation: pt-lift 0.25s ease-out; }
         @keyframes pt-lift { from { transform: scale(0.9) translateY(20px); opacity: 0; } to { transform: scale(1) translateY(0); opacity: 1; } }
         .pt-picked-close { position: absolute; top: 8px; right: 10px; background: rgba(0,0,0,0.1); border: none; color: #fff; font-size: 22px; cursor: pointer; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; z-index: 10; font-family: inherit; }
         .pt-picked-close:hover { background: rgba(0,0,0,0.2); }
@@ -256,9 +305,9 @@ export function PaperTableView({ posts, onStamp, isStamping, onLoadMore, hasMore
         .pt-picked-time { font-size: 11px; color: #b0a090; }
         .pt-picked-img { width: 100%; max-height: 55vh; object-fit: contain; display: block; background: #faf7f0; }
         .pt-picked-actions { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-top: 1px solid #f0e8d8; }
-        .pt-stamp-btn { display: flex; align-items: center; gap: 5px; padding: 6px 14px; border: 1.5px solid #d0c8b8; border-radius: 18px; background: #fefdf9; cursor: pointer; font-size: 13px; font-family: inherit; color: #6b5c40; transition: all 0.15s; }
-        .pt-stamp-btn:hover { border-color: #c0392b; color: #c0392b; }
-        .pt-stamp-btn.stamped { background: #fff5f0; border-color: #c0392b; color: #c0392b; }
+        .pt-stamp-btn { display: flex; align-items: center; gap: 5px; padding: 6px 14px; border: 1.5px solid #d0c8b8; border-radius: 8px; background: #fefdf9; cursor: pointer; font-size: 13px; font-family: inherit; color: #6b5c40; transition: all 0.15s; }
+        .pt-stamp-btn:hover { border-color: #1a1a1a; color: #1a1a1a; }
+        .pt-stamp-btn.stamped { background: #f5f4f1; border-color: #1a1a1a; color: #1a1a1a; }
         .pt-detail-link { padding: 6px 14px; border: 1px solid #e0d5c0; border-radius: 8px; background: #fefdf9; color: #6b5c40; font-size: 12px; text-decoration: none; margin-left: auto; }
         .pt-detail-link:hover { background: #f5f0e8; }
         .pt-loading { position: absolute; display: flex; flex-direction: column; align-items: center; gap: 8px; color: rgba(255,255,255,0.5); font-size: 13px; font-style: italic; }

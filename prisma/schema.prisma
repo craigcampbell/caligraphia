@@ -13,6 +13,7 @@ model User {
   email       String   @unique
   nomDePlume  String?  @map("nom_de_plume")
   stampBalance Int    @default(0) @map("stamp_balance")
+  stampRefillAt DateTime @default(now()) @map("stamp_refill_at")
   totalStampsEarned Int @default(0) @map("total_stamps_earned")
   createdAt   DateTime @default(now()) @map("created_at")
 
@@ -26,6 +27,9 @@ model User {
 
   followers  UserFollow[] @relation("following")
   following  UserFollow[] @relation("follower")
+
+  exchangesStarted Exchange[] @relation("ExchangeUserA")
+  exchangesJoined  Exchange[] @relation("ExchangeUserB")
 
   @@map("users")
 }
@@ -61,6 +65,7 @@ model Post {
   stampCount         Int       @default(0) @map("stamp_count")
   recipientId        String?   @map("recipient_id") @db.Uuid
   isPrivate          Boolean   @default(false) @map("is_private")
+  needsReview        Boolean   @default(false) @map("needs_review")
   ocrText            String?   @map("ocr_text")
   ocrHashtags        String[]  @map("ocr_hashtags")
   createdAt          DateTime  @default(now()) @map("created_at")
@@ -80,7 +85,6 @@ model Post {
 
 enum InteractionType {
   like
-  dislike
 }
 
 model PostInteraction {
@@ -185,6 +189,23 @@ model Reply {
   childPost  Post @relation("ChildPost", fields: [childPostId], references: [id], onDelete: Cascade)
 
   @@map("replies")
+}
+
+// Letter Exchange: two strangers paired; each writes the other one letter.
+// A row with userBId = null is an open seat waiting for a partner.
+model Exchange {
+  id        String    @id @default(uuid()) @db.Uuid
+  userAId   String    @map("user_a_id") @db.Uuid
+  userBId   String?   @map("user_b_id") @db.Uuid
+  letterAId String?   @map("letter_a_id") @db.Uuid
+  letterBId String?   @map("letter_b_id") @db.Uuid
+  createdAt DateTime  @default(now()) @map("created_at")
+  matchedAt DateTime? @map("matched_at")
+
+  userA User  @relation("ExchangeUserA", fields: [userAId], references: [id], onDelete: Cascade)
+  userB User? @relation("ExchangeUserB", fields: [userBId], references: [id], onDelete: Cascade)
+
+  @@map("exchanges")
 }
 
 model Marginalium {

@@ -140,7 +140,7 @@ export default function StampBookPage() {
           justify-content: center;
           gap: 6px;
         }
-        .sb-icon { color: #c0392b; }
+        .sb-icon { color: #1a1a1a; }
         .sb-summary {
           display: flex;
           justify-content: center;
@@ -189,7 +189,7 @@ export default function StampBookPage() {
         }
         .sb-design-card {
           border: 2px solid #d0c8b8;
-          border-radius: 12px;
+          border-radius: 6px;
           background: #fefdf9;
           overflow: hidden;
           transition: box-shadow 0.2s;
@@ -242,9 +242,9 @@ export default function StampBookPage() {
           display: inline-block;
           margin-top: 16px;
           padding: 10px 24px;
-          background: linear-gradient(135deg, #2c3e50, #c0392b);
+          background: #1a1a1a;
           color: #fff;
-          border-radius: 24px;
+          border-radius: 8px;
           font-weight: 600;
           font-size: 14px;
         }

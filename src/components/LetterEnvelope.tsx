@@ -38,18 +38,11 @@ export function LetterEnvelope({ letterImageUrl, onComplete, onBack, username, s
     waxSealColor: "#b22222",
     foldStyle: "tri-fold",
   });
+  const [sealPos, setSealPos] = useState<{ x: number; y: number } | null>(null);
   const [signing, setSigning] = useState(false);
   const [signatureStrokes, setSignatureStrokes] = useState<any[]>([]);
   const [drawingSig, setDrawingSig] = useState(false);
   const [currentSigPath, setCurrentSigPath] = useState("");
-
-  // Personal wax seal — generated once from username
-  const personalSeal = useMemo(() => {
-    if (username) {
-      return generateWaxSealSvg(username, stampCount || 0);
-    }
-    return null;
-  }, [username, stampCount]);
 
   // Midnight overlay
   const midnightOverlay = useMemo(() => {
@@ -59,30 +52,45 @@ export function LetterEnvelope({ letterImageUrl, onComplete, onBack, username, s
     return null;
   }, [isMidnight]);
 
-  const handleSealDraw = (e: React.PointerEvent<SVGSVGElement>) => {
-    if (!svgRef.current) return;
-    const svg = svgRef.current;
+  const toSvgPoint = (e: React.PointerEvent<SVGSVGElement>) => {
+    const svg = svgRef.current!;
     const pt = svg.createSVGPoint();
     pt.x = e.clientX;
     pt.y = e.clientY;
-    const cursor = pt.matrixTransform(svg.getScreenCTM()!.inverse());
+    return pt.matrixTransform(svg.getScreenCTM()!.inverse());
+  };
 
-    // Draw wax seal as a stylized circle at click position
-    const cx = envelopeData.stampX * 400;
-    const cy = envelopeData.stampY * 500 + 100;
-    const dist = Math.sqrt(
-      (cursor.x - cx) ** 2 + (cursor.y - cy) ** 2
-    );
-    if (dist < 60) {
-      // Remove seal
+  const placeSeal = (x: number, y: number, color: string) => {
+    const markup = username
+      ? generateWaxSealSvg(username, stampCount || 0, color)
+      : `<circle cx="30" cy="30" r="26" fill="${color}" opacity="0.92"/>
+         <circle cx="30" cy="30" r="20" fill="none" stroke="rgba(255,255,255,0.4)" stroke-width="1.5"/>`;
+    setEnvelopeData((prev) => ({
+      ...prev,
+      waxSealColor: color,
+      waxSealSvg: `<g transform="translate(${(x - 30).toFixed(1)},${(y - 30).toFixed(1)})">${markup}</g>`,
+    }));
+    setSealPos({ x, y });
+  };
+
+  const handleSealTap = (e: React.PointerEvent<SVGSVGElement>) => {
+    if (!svgRef.current) return;
+    const cursor = toSvgPoint(e);
+    if (sealPos && Math.hypot(cursor.x - sealPos.x, cursor.y - sealPos.y) < 40) {
+      // Tap the existing seal to lift it off
       setEnvelopeData((prev) => ({ ...prev, waxSealSvg: null }));
+      setSealPos(null);
     } else {
-      // Place seal
-      const sealSvg = `<circle cx="${cursor.x}" cy="${cursor.y}" r="28" fill="${envelopeData.waxSealColor}" opacity="0.9"/>
-        <circle cx="${cursor.x}" cy="${cursor.y}" r="22" fill="none" stroke="${envelopeData.waxSealColor}" stroke-width="2" opacity="0.5"/>
-        <circle cx="${cursor.x}" cy="${cursor.y}" r="16" fill="none" stroke="${envelopeData.waxSealColor}" stroke-width="1.5" opacity="0.4"/>
-        <text x="${cursor.x}" y="${cursor.y + 4}" text-anchor="middle" fill="#fff" font-size="10" font-family="serif" font-weight="bold">C</text>`;
-      setEnvelopeData((prev) => ({ ...prev, waxSealSvg: sealSvg }));
+      placeSeal(cursor.x, cursor.y, envelopeData.waxSealColor);
+    }
+  };
+
+  const pickWaxColor = (color: string) => {
+    if (sealPos) {
+      // Re-press the seal in the new wax
+      placeSeal(sealPos.x, sealPos.y, color);
+    } else {
+      setEnvelopeData((prev) => ({ ...prev, waxSealColor: color }));
     }
   };
 
@@ -90,21 +98,13 @@ export function LetterEnvelope({ letterImageUrl, onComplete, onBack, username, s
     if (!svgRef.current || !signing) return;
     svgRef.current.setPointerCapture(e.pointerId);
     setDrawingSig(true);
-    const svg = svgRef.current;
-    const pt = svg.createSVGPoint();
-    pt.x = e.clientX;
-    pt.y = e.clientY;
-    const cursor = pt.matrixTransform(svg.getScreenCTM()!.inverse());
+    const cursor = toSvgPoint(e);
     setCurrentSigPath(`M${cursor.x},${cursor.y}`);
   };
 
   const moveSig = (e: React.PointerEvent<SVGSVGElement>) => {
     if (!drawingSig || !signing || !svgRef.current) return;
-    const svg = svgRef.current;
-    const pt = svg.createSVGPoint();
-    pt.x = e.clientX;
-    pt.y = e.clientY;
-    const cursor = pt.matrixTransform(svg.getScreenCTM()!.inverse());
+    const cursor = toSvgPoint(e);
     setCurrentSigPath((prev) => prev + ` L${cursor.x},${cursor.y}`);
   };
 
@@ -121,11 +121,16 @@ export function LetterEnvelope({ letterImageUrl, onComplete, onBack, username, s
     onComplete(envelopeData, signatureStrokes.length > 0 ? signatureStrokes : undefined);
   };
 
+  const paperFill = isMidnight ? "#23233c" : "#fffef9";
+  const bodyFill = isMidnight ? "#1a1a2e" : "#f3ecdc";
+  const seamFill = isMidnight ? "#16162a" : "#eee5d2";
+  const edgeStroke = isMidnight ? "#2a2a4e" : "#d6cab2";
+
   return (
     <div className="letter-envelope-shell">
       <div className="envelope-header">
         <button onClick={onBack} className="env-back-btn">&larr; Edit Letter</button>
-        <span className="env-title">Seal & Send</span>
+        <span className="env-title">Seal &amp; Send</span>
         <button
           className={`env-sign-btn ${signing ? "signing" : ""}`}
           onClick={() => setSigning(!signing)}
@@ -136,102 +141,89 @@ export function LetterEnvelope({ letterImageUrl, onComplete, onBack, username, s
 
       <div className="envelope-body">
         <div className="envelope-preview">
-          <svg ref={svgRef} className="envelope-svg" viewBox="0 0 500 400"
-            onPointerDown={signing ? startSig : handleSealDraw}
+          <svg ref={svgRef} className="envelope-svg" viewBox="0 0 500 420"
+            onPointerDown={signing ? startSig : handleSealTap}
             onPointerMove={moveSig}
             onPointerUp={endSig}
             onPointerLeave={endSig}
             style={{ touchAction: "none" }}
           >
-            {/* Envelope body */}
-            <rect x="20" y="30" width="460" height="340" rx="6" fill="#f5f0e8" stroke="#d0c8b8" strokeWidth="2"/>
+            <defs>
+              <clipPath id="env-letter-peek">
+                <rect x="68" y="24" width="364" height="156" rx="2" />
+              </clipPath>
+              <linearGradient id="env-mouth-shade" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0" stopColor="rgba(60,40,15,0.35)" />
+                <stop offset="1" stopColor="rgba(60,40,15,0)" />
+              </linearGradient>
+            </defs>
 
-            {/* Envelope flap (triangle) */}
-            <polygon points="250,30 20,370 480,370" fill={isMidnight ? "#1a1a2e" : "#ede4d0"} stroke={isMidnight ? "#2a2a4e" : "#d0c8b8"} strokeWidth="1.5"/>
+            {/* The letter, sliding into the envelope */}
+            <rect x="64" y="20" width="372" height="170" rx="2" fill={paperFill} stroke={edgeStroke} strokeWidth="1" />
+            <image
+              href={letterImageUrl}
+              x="68" y="24"
+              width="364" height="260"
+              preserveAspectRatio="xMidYMin slice"
+              clipPath="url(#env-letter-peek)"
+            />
+
+            {/* Envelope body (back side, seams visible) */}
+            <rect x="28" y="180" width="444" height="216" rx="6" fill={bodyFill} stroke={edgeStroke} strokeWidth="1.5" />
+            <rect x="30" y="181" width="440" height="14" fill="url(#env-mouth-shade)" />
+            <polygon points="30,182 250,300 30,394" fill={seamFill} stroke={edgeStroke} strokeWidth="1" />
+            <polygon points="470,182 250,300 470,394" fill={seamFill} stroke={edgeStroke} strokeWidth="1" />
+            <polygon points="30,394 250,292 470,394" fill={isMidnight ? "#1e1e34" : "#f0e8d6"} stroke={edgeStroke} strokeWidth="1" />
 
             {/* Midnight overlay — stars + moon */}
             {midnightOverlay && (
               <g opacity="0.3" dangerouslySetInnerHTML={{ __html: midnightOverlay }} />
             )}
 
-            {/* Personal wax seal on the flap */}
-            {personalSeal && (
-              <g transform="translate(235, 180) scale(0.7)" opacity="0.6">
-                <g dangerouslySetInnerHTML={{ __html: personalSeal }} />
+            {/* Postage stamp, top-right of the envelope */}
+            <g transform="translate(420, 215)">
+              <rect x="-22" y="-26" width="44" height="54" rx="1" fill="#e8d5b0" stroke="#c0a880" strokeWidth="0.6" />
+              <rect x="-19" y="-23" width="38" height="48" rx="1" fill="#f0e0c0" stroke="#c0a880" strokeWidth="0.4" />
+              <text x="0" y="-8" textAnchor="middle" fill="#8b6914" fontSize="8" fontWeight="bold">5&#162;</text>
+              <circle cx="0" cy="8" r="9" fill="none" stroke="#8b6914" strokeWidth="0.6" />
+              <text x="0" y="11" textAnchor="middle" fill="#8b6914" fontSize="7">C</text>
+            </g>
+
+            {/* Ghost target where the seal would close the mouth */}
+            {!envelopeData.waxSealSvg && !signing && (
+              <g className="seal-ghost">
+                <circle cx="250" cy="190" r="27" fill="none" stroke={envelopeData.waxSealColor} strokeWidth="1.5" strokeDasharray="4,4" />
+                <text x="250" y="194" textAnchor="middle" fill={envelopeData.waxSealColor} fontSize="10" fontFamily="serif" fontStyle="italic">seal</text>
               </g>
             )}
-
-            {/* Letter peek-through (scaled down letter image) */}
-            <image
-              href={letterImageUrl}
-              x="70" y="80"
-              width="360" height="240"
-              preserveAspectRatio="xMidYMid slice"
-              opacity="0.85"
-              clipPath="url(#letterClip)"
-            />
-            <clipPath id="letterClip">
-              <rect x="70" y="80" width="360" height="240" rx="3"/>
-            </clipPath>
-
-            {/* Letter edge shadow */}
-            <rect x="70" y="80" width="360" height="240" rx="3"
-              fill="none" stroke="rgba(0,0,0,0.08)" strokeWidth="1"/>
-
-            {/* Stamp placement zone */}
-            {(() => {
-              const sx = envelopeData.stampX * 400;
-              const sy = envelopeData.stampY * 500 + 30;
-              return (
-                <g>
-                  <rect x={sx - 25} y={sy - 35} width="50" height="60" rx="2"
-                    fill="none" stroke="rgba(0,0,0,0.12)" strokeWidth="1"
-                    strokeDasharray="3,3" />
-                  <text x={sx} y={sy - 20} textAnchor="middle" fill="rgba(0,0,0,0.2)" fontSize="8">STAMP</text>
-                  {/* Stamp design */}
-                  {sx > 0 && (
-                    <g transform={`translate(${sx},${sy})`}>
-                      <rect x="-20" y="-30" width="40" height="50" rx="1"
-                        fill="#e8d5b0" stroke="#c0a880" strokeWidth="0.5"/>
-                      <rect x="-18" y="-28" width="36" height="46" rx="1"
-                        fill="#f0e0c0" stroke="#c0a880" strokeWidth="0.3"/>
-                      <text x="0" y="-5" textAnchor="middle" fill="#8b6914" fontSize="7" fontWeight="bold">5¢</text>
-                      <circle cx="0" cy="6" r="8" fill="none" stroke="#8b6914" strokeWidth="0.5"/>
-                      <text x="0" y="9" textAnchor="middle" fill="#8b6914" fontSize="6">C</text>
-                      <line x1="-15" y1="-25" x2="15" y2="-25" stroke="#c0a880" strokeWidth="0.3"/>
-                      <line x1="-15" y1="18" x2="15" y2="18" stroke="#c0a880" strokeWidth="0.3"/>
-                    </g>
-                  )}
-                </g>
-              );
-            })()}
 
             {/* Wax seal */}
             {envelopeData.waxSealSvg && (
               <g dangerouslySetInnerHTML={{ __html: envelopeData.waxSealSvg }} />
             )}
 
-            {/* Signature area */}
+            {/* Signature strokes */}
             {signatureStrokes.map((d, i) => (
               <path key={`sig-${i}`} d={d}
-                stroke="#1a1a2e" strokeWidth="1.5" fill="none"
-                strokeLinecap="round" strokeLinejoin="round" opacity="0.7"/>
+                stroke={isMidnight ? "#e8e4f0" : "#1a1a2e"} strokeWidth="1.5" fill="none"
+                strokeLinecap="round" strokeLinejoin="round" opacity="0.75" />
             ))}
             {currentSigPath && (
               <path d={currentSigPath}
-                stroke="#1a1a2e" strokeWidth="1.5" fill="none"
-                strokeLinecap="round" strokeLinejoin="round" opacity="0.7"/>
+                stroke={isMidnight ? "#e8e4f0" : "#1a1a2e"} strokeWidth="1.5" fill="none"
+                strokeLinecap="round" strokeLinejoin="round" opacity="0.75" />
             )}
 
-            {/* Address lines (decorative) */}
-            <text x="120" y="230" fill="rgba(0,0,0,0.15)" fontSize="8" fontFamily="serif">To the Caligraphia community,</text>
-            <text x="120" y="245" fill="rgba(0,0,0,0.1)" fontSize="7" fontFamily="serif">c/o The Postbox</text>
+            {/* Address line (decorative) */}
+            <text x="60" y="372" fill={isMidnight ? "rgba(255,255,255,0.18)" : "rgba(0,0,0,0.18)"} fontSize="10" fontFamily="serif" fontStyle="italic">to the Caligraphia postbox</text>
           </svg>
 
           <p className="env-hint">
             {signing
-              ? "Draw your signature at the bottom of the letter"
-              : "Tap to place a wax seal on the envelope flap (tap an existing seal to remove it)"}
+              ? "Draw your signature anywhere on the envelope"
+              : envelopeData.waxSealSvg
+                ? "Tap your seal to lift it off, or tap elsewhere to re-press it"
+                : "Tap the envelope to press your wax seal"}
           </p>
         </div>
       </div>
@@ -244,7 +236,7 @@ export function LetterEnvelope({ letterImageUrl, onComplete, onBack, username, s
               key={c}
               className={`wax-swatch ${envelopeData.waxSealColor === c ? "active" : ""}`}
               style={{ background: c }}
-              onClick={() => setEnvelopeData((prev) => ({ ...prev, waxSealColor: c }))}
+              onClick={() => pickWaxColor(c)}
               aria-label={`Wax color ${c}`}
             />
           ))}
@@ -267,13 +259,13 @@ export function LetterEnvelope({ letterImageUrl, onComplete, onBack, username, s
           align-items: center;
           justify-content: space-between;
           padding: 12px 0;
-          border-bottom: 1px solid #e0d5c0;
+          border-bottom: 1px solid var(--line, #e0d5c0);
           margin-bottom: 16px;
         }
         .env-back-btn {
           background: none;
           border: none;
-          color: #8c7a60;
+          color: var(--muted, #8c7a60);
           cursor: pointer;
           font-size: 14px;
           font-family: inherit;
@@ -288,7 +280,7 @@ export function LetterEnvelope({ letterImageUrl, onComplete, onBack, username, s
         .env-sign-btn {
           padding: 6px 14px;
           border: 1.5px solid #c0a880;
-          border-radius: 16px;
+          border-radius: 8px;
           background: transparent;
           cursor: pointer;
           font-size: 12px;
@@ -298,7 +290,7 @@ export function LetterEnvelope({ letterImageUrl, onComplete, onBack, username, s
         }
         .env-sign-btn.signing {
           background: #2c2416;
-          color: #fefdf9;
+          color: var(--paper-bright, #fefdf9);
           border-color: #2c2416;
         }
         .envelope-body {
@@ -316,12 +308,16 @@ export function LetterEnvelope({ letterImageUrl, onComplete, onBack, username, s
           height: auto;
           cursor: crosshair;
           border-radius: 8px;
-          box-shadow: 0 4px 24px rgba(0,0,0,0.08), 0 1px 4px rgba(0,0,0,0.04);
+        }
+        .seal-ghost { animation: seal-pulse 2.2s ease-in-out infinite; }
+        @keyframes seal-pulse {
+          0%, 100% { opacity: 0.2; }
+          50% { opacity: 0.5; }
         }
         .env-hint {
           text-align: center;
           font-size: 12px;
-          color: #8c7a60;
+          color: var(--muted, #8c7a60);
           font-style: italic;
           margin-top: 10px;
         }
@@ -330,7 +326,7 @@ export function LetterEnvelope({ letterImageUrl, onComplete, onBack, username, s
           align-items: center;
           justify-content: space-between;
           padding: 16px 0 24px;
-          border-top: 1px solid #e0d5c0;
+          border-top: 1px solid var(--line, #e0d5c0);
           margin-top: 16px;
         }
         .wax-colors {
@@ -363,19 +359,19 @@ export function LetterEnvelope({ letterImageUrl, onComplete, onBack, username, s
           gap: 8px;
           padding: 12px 28px;
           border: none;
-          border-radius: 24px;
-          background: linear-gradient(135deg, #2c3e50, #c0392b);
+          border-radius: 8px;
+          background: var(--ink, #1a1a1a);
           color: #fff;
           font-weight: 700;
           font-size: 15px;
           cursor: pointer;
           font-family: inherit;
-          box-shadow: 0 4px 16px rgba(192,57,43,0.25);
+          box-shadow: 0 4px 16px rgba(0,0,0,0.18);
           transition: transform 0.15s, box-shadow 0.15s;
         }
         .env-send-btn:hover {
           transform: translateY(-1px);
-          box-shadow: 0 6px 24px rgba(192,57,43,0.35);
+          box-shadow: 0 6px 24px rgba(0,0,0,0.18);
         }
         .send-icon { font-size: 18px; }
       `}</style>

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { StarIcon, ScratchIcon } from "./Icons";
 
 interface PostCardProps {
   post: {
@@ -10,24 +11,21 @@ interface PostCardProps {
     uploadedPhotoUrl: string | null;
     ocrHashtags: string[];
     createdAt: string;
+    stampCount?: number;
     user: {
       id: string;
       username: string;
       nomDePlume: string | null;
     };
     _count: {
-      interactions: number;
       scratches: number;
     };
-    likeCount?: number;
-    dislikeCount?: number;
   };
 }
 
 export function PostCard({ post }: PostCardProps) {
   const imageUrl = post.finalImageUrl || post.uploadedPhotoUrl;
-  const likeCount = post.likeCount ?? post._count.interactions;
-  const dislikeCount = post.dislikeCount ?? 0;
+  const stampCount = post.stampCount ?? 0;
 
   return (
     <article className="card">
@@ -50,9 +48,8 @@ export function PostCard({ post }: PostCardProps) {
         </Link>
 
         <div className="card-stats">
-          <span className="stat">&#9650; {likeCount}</span>
-          <span className="stat">&#9660; {dislikeCount}</span>
-          <span className="stat">&#9998; {post._count.scratches}</span>
+          <span className="stat" title="Stamps"><StarIcon size={13} /> {stampCount}</span>
+          <span className="stat" title="Scratches"><ScratchIcon size={13} /> {post._count.scratches}</span>
         </div>
 
         {post.ocrHashtags.length > 0 && (
@@ -67,7 +64,7 @@ export function PostCard({ post }: PostCardProps) {
       <style>{`
         .card {
           border: 1px solid #e0d5c0;
-          border-radius: 14px;
+          border-radius: 8px;
           overflow: hidden;
           background: #fefdf9;
           transition: box-shadow 0.2s;
@@ -98,7 +95,7 @@ export function PostCard({ post }: PostCardProps) {
         .card-tags { display: flex; flex-wrap: wrap; gap: 6px; }
         .tag {
           font-size: 11px; color: #6b5c40; background: #f0e8d8;
-          padding: 2px 10px; border-radius: 12px;
+          padding: 2px 10px; border-radius: 6px;
         }
       `}</style>
     </article>

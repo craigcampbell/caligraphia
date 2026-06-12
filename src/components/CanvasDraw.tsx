@@ -23,6 +23,8 @@ const INK_STYLES = [
   { id: "runny", name: "Runny", desc: "wet & splattery" },
   { id: "quill", name: "Quill", desc: "scratchy nib" },
   { id: "calligraphy", name: "Callig.", desc: "flat angle nib" },
+  { id: "copperplate", name: "Copperplate", desc: "pointed-nib, pressure-driven" },
+  { id: "brush", name: "Brush", desc: "wide calligraphy brush" },
 ] as const;
 
 type InkId = (typeof INK_STYLES)[number]["id"];
@@ -140,6 +142,16 @@ function renderSegment(ctx: CanvasRenderingContext2D, ink: InkId, x1: number, y1
     const w = Math.max(1.2, (p1 + p2) / 2 * 14 * speedFactor);
     baseW = w * Math.max(0.2, widthFactor);
     alpha = 0.85;
+  } else if (ink === "copperplate") {
+    // Pointed-nib: ultra-thin hairlines, swells purely from pressure
+    baseW = Math.max(0.4, (p1 + p2) / 2 * 18);
+    alpha = 0.9 + ri() * 0.1;
+  } else if (ink === "brush") {
+    // Wide calligraphy brush — speed thins the stroke, pressure widens it
+    const speed = Math.sqrt(dx * dx + dy * dy);
+    const speedFactor = Math.max(0.4, Math.min(1.2, 200 / (speed + 8)));
+    baseW = Math.max(1.5, (p1 + p2) / 2 * 22 * speedFactor);
+    alpha = 0.65 + (p1 + p2) / 2 * 0.3;
   } else {
     baseW = Math.max(2, (p1 + p2) / 2 * 9);
     alpha = 1;
@@ -241,6 +253,14 @@ function drawDot(ctx: CanvasRenderingContext2D, ink: InkId, px: number, py: numb
     ctx.fillStyle = color;
     ctx.fill();
     ctx.restore();
+  } else if (ink === "copperplate") {
+    const r = Math.max(0.4, pressure * 9);
+    ctx.beginPath(); ctx.arc(px, py, r, 0, Math.PI * 2);
+    ctx.fillStyle = color; ctx.globalAlpha = 0.92; ctx.fill(); ctx.globalAlpha = 1;
+  } else if (ink === "brush") {
+    const r = Math.max(1.5, pressure * 14);
+    ctx.beginPath(); ctx.arc(px, py, r, 0, Math.PI * 2);
+    ctx.fillStyle = color; ctx.globalAlpha = 0.7 + pressure * 0.25; ctx.fill(); ctx.globalAlpha = 1;
   } else {
     ctx.beginPath();
     ctx.arc(px, py, Math.max(1.2, pressure * 7), 0, Math.PI * 2);
@@ -249,7 +269,7 @@ function drawDot(ctx: CanvasRenderingContext2D, ink: InkId, px: number, py: numb
   }
 }
 
-export function CanvasDraw({ onComplete, onCancel, minDrawTimeMs = 15000 }: Props) {
+export function CanvasDraw({ onComplete, onCancel, minDrawTimeMs = 4000 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const ctxRef = useRef<CanvasRenderingContext2D | null>(null);
   const [drawing, setDrawing] = useState(false);
@@ -272,6 +292,18 @@ export function CanvasDraw({ onComplete, onCancel, minDrawTimeMs = 15000 }: Prop
   const firstStrokeTimeRef = useRef<number | null>(null);
   const lastPtRef = useRef<{ px: number; py: number; pressure: number; color: string } | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Stroke boundaries (indexes into strokesRef) so the last stroke can be undone
+  const strokeStartsRef = useRef<number[]>([]);
+  const [strokeCount, setStrokeCount] = useState(0);
+
+  // Palm rejection: once a stylus is seen, finger touches are ignored, and
+  // only one pointer may draw at a time (a resting palm is a second pointer).
+  const penSeenRef = useRef(false);
+  const activePointerRef = useRef<number | null>(null);
+
+  // Input smoothing state (exponential filter, speed-adaptive)
+  const smoothedRef = useRef<{ x: number; y: number; t: number } | null>(null);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -342,10 +374,29 @@ export function CanvasDraw({ onComplete, onCancel, minDrawTimeMs = 15000 }: Prop
     };
   }, []);
 
+  // One-euro-style filter: heavy smoothing for slow, shaky finger writing,
+  // light smoothing when moving fast so the line doesn't lag behind the pen.
+  const smoothCoords = useCallback((raw: { x: number; y: number }, pointerType: string) => {
+    const now = performance.now();
+    const prev = smoothedRef.current;
+    if (!prev) {
+      smoothedRef.current = { x: raw.x, y: raw.y, t: now };
+      return raw;
+    }
+    const dt = Math.max(1, now - prev.t);
+    const speed = Math.hypot(raw.x - prev.x, raw.y - prev.y) / dt; // normalized units/ms
+    const minAlpha = pointerType === "pen" ? 0.45 : 0.25;
+    const alpha = Math.min(0.95, minAlpha + speed * 600);
+    const x = prev.x + alpha * (raw.x - prev.x);
+    const y = prev.y + alpha * (raw.y - prev.y);
+    smoothedRef.current = { x, y, t: now };
+    return { x, y };
+  }, []);
+
   const drawPt = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
     const ctx = ctxRef.current;
     if (!ctx) return;
-    const { x, y } = getCoords(e);
+    const { x, y } = smoothCoords(getCoords(e), e.pointerType);
     const pressure = e.pressure || 0.5;
     const tiltX = (e as any).tiltX !== undefined ? (e as any).tiltX : undefined;
     const tiltY = (e as any).tiltY !== undefined ? (e as any).tiltY : undefined;
@@ -372,20 +423,49 @@ export function CanvasDraw({ onComplete, onCancel, minDrawTimeMs = 15000 }: Prop
       const speed = Math.sqrt((px - (prev?.px || px)) ** 2 + (py - (prev?.py || py)) ** 2);
       updateScratch(speed);
     }
-  }, [getCoords, selectedColor, inkStyle, soundOn, updateScratch]);
+  }, [getCoords, smoothCoords, selectedColor, inkStyle, soundOn, updateScratch]);
 
   const handleDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
     e.preventDefault();
+    if (e.pointerType === "pen") penSeenRef.current = true;
+    // Palm rejection: ignore fingers once a stylus is in play, and ignore
+    // any second pointer while one is already drawing.
+    if (e.pointerType === "touch" && penSeenRef.current) return;
+    if (activePointerRef.current !== null) return;
+    activePointerRef.current = e.pointerId;
     canvasRef.current?.setPointerCapture(e.pointerId);
     setDrawing(true);
     lastPtRef.current = null;
+    smoothedRef.current = null;
+    strokeStartsRef.current.push(strokesRef.current.length);
+    setStrokeCount(strokeStartsRef.current.length);
     if (soundOn) startScratch();
     drawPt(e);
   };
-  const handleMove = (e: React.PointerEvent<HTMLCanvasElement>) => { if (!drawing) return; e.preventDefault(); drawPt(e); };
+  const handleMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (!drawing || e.pointerId !== activePointerRef.current) return;
+    e.preventDefault();
+    drawPt(e);
+  };
   const handleUp = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    e.preventDefault(); setDrawing(false); lastPtRef.current = null;
+    if (activePointerRef.current !== null && e.pointerId !== activePointerRef.current) return;
+    e.preventDefault();
+    activePointerRef.current = null;
+    setDrawing(false);
+    lastPtRef.current = null;
+    smoothedRef.current = null;
     if (soundOn) stopScratch();
+  };
+
+  // Undo the most recent stroke. Pen plotters get no undo; humans on phones do.
+  const handleUndo = () => {
+    const starts = strokeStartsRef.current;
+    if (starts.length === 0) return;
+    const start = starts.pop()!;
+    strokesRef.current = strokesRef.current.slice(0, start);
+    setStrokeCount(starts.length);
+    const ctx = ctxRef.current;
+    if (ctx) redraw(ctx);
   };
 
   const handleSubmit = () => {
@@ -526,6 +606,9 @@ export function CanvasDraw({ onComplete, onCancel, minDrawTimeMs = 15000 }: Prop
 
       <div className="canvas-actions">
         <button onClick={onCancel} className="btn-cancel">Discard</button>
+        <button onClick={handleUndo} className="btn-undo" disabled={strokeCount === 0} title="Undo last stroke">
+          &#8630; Undo stroke
+        </button>
         <button onClick={handleSubmit} className={`btn-submit ${canSubmit ? "ready" : "disabled"}`} disabled={!canSubmit}>
           {canSubmit ? "Send Your Letter" : "Ink still drying..."}
         </button>
@@ -536,7 +619,7 @@ export function CanvasDraw({ onComplete, onCancel, minDrawTimeMs = 15000 }: Prop
         .canvas-topbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; width: 100%; }
         .paper-chooser, .ink-style-chooser { display: flex; gap: 4px; flex-wrap: wrap; }
         .paper-chip, .ink-chip {
-          padding: 5px 12px; border: 1.5px solid #d0c8b8; border-radius: 18px;
+          padding: 5px 12px; border: 1.5px solid #d0c8b8; border-radius: 8px;
           cursor: pointer; font-size: 12px; font-family: inherit; font-weight: 500;
           color: #5c5040; transition: all 0.15s; background: #fefdf9;
         }
@@ -592,12 +675,15 @@ export function CanvasDraw({ onComplete, onCancel, minDrawTimeMs = 15000 }: Prop
         .ink-splatter-btn:hover { border-color: #8b4513; color: #8b4513; background: #fff5f0; }
         .draw-canvas { border: 1px solid #d8d0c0; border-radius: 4px; cursor: crosshair; box-shadow: 0 2px 20px rgba(0,0,0,0.06), 0 1px 4px rgba(0,0,0,0.04); }
         .canvas-actions { display: flex; gap: 14px; padding: 6px 0 20px; }
-        .btn-cancel { padding: 12px 32px; border: 1px solid #ccc; border-radius: 24px; background: #fff; cursor: pointer; font-size: 15px; font-weight: 500; font-family: inherit; }
+        .btn-cancel { padding: 12px 32px; border: 1px solid #ccc; border-radius: 8px; background: #fff; cursor: pointer; font-size: 15px; font-weight: 500; font-family: inherit; }
         .btn-cancel:hover { background: #f8f5f0; }
-        .btn-submit { padding: 12px 32px; border: none; border-radius: 24px; cursor: pointer; font-size: 15px; font-weight: 700; font-family: inherit; transition: all 0.2s; }
+        .btn-undo { padding: 12px 24px; border: 1px solid #d0c8b8; border-radius: 8px; background: #fefdf9; color: #5c4a30; cursor: pointer; font-size: 15px; font-weight: 500; font-family: inherit; }
+        .btn-undo:hover:not(:disabled) { border-color: #8b4513; color: #8b4513; }
+        .btn-undo:disabled { opacity: 0.4; cursor: not-allowed; }
+        .btn-submit { padding: 12px 32px; border: none; border-radius: 8px; cursor: pointer; font-size: 15px; font-weight: 700; font-family: inherit; transition: all 0.2s; }
         .btn-submit.disabled { background: #e0ddd5; color: #999; cursor: not-allowed; }
-        .btn-submit.ready { background: linear-gradient(135deg, #2c3e50, #8e44ad, #c0392b); color: #fff; box-shadow: 0 4px 16px rgba(192,57,43,0.25); }
-        .btn-submit.ready:hover { transform: translateY(-1px); box-shadow: 0 6px 24px rgba(192,57,43,0.35); }
+        .btn-submit.ready { background: #1a1a1a; color: #fff; box-shadow: 0 4px 16px rgba(0,0,0,0.18); }
+        .btn-submit.ready:hover { transform: translateY(-1px); box-shadow: 0 6px 24px rgba(0,0,0,0.18); }
       `}</style>
     </div>
   );

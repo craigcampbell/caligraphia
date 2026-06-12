@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { ScratchIcon, StarIcon } from "./Icons";
 
 interface EnvelopeCardProps {
   post: {
@@ -19,7 +20,6 @@ interface EnvelopeCardProps {
       nomDePlume: string | null;
     };
     _count: {
-      interactions: number;
       scratches: number;
     };
     userInteraction?: string | null;
@@ -31,6 +31,8 @@ interface EnvelopeCardProps {
 export function EnvelopeCard({ post, onStamp, isStamping }: EnvelopeCardProps) {
   const [opened, setOpened] = useState(false);
   const imageUrl = post.finalImageUrl || post.uploadedPhotoUrl;
+  const waxColor = post.envelopeData?.waxSealColor || "#b22222";
+  const initial = post.user.username[0]?.toUpperCase() || "?";
 
   const timeAgo = (date: string) => {
     const diff = Date.now() - new Date(date).getTime();
@@ -54,42 +56,63 @@ export function EnvelopeCard({ post, onStamp, isStamping }: EnvelopeCardProps) {
       <article className="env-card" onClick={() => setOpened(true)}
         style={{ filter: `sepia(${sepiaAmount * 0.5})` }}>
         <div className="env-card-inner">
-          {/* Envelope back */}
-          <svg viewBox="0 0 500 360" className="env-svg-thumb" preserveAspectRatio="xMidYMid meet">
-            <rect x="20" y="20" width="460" height="320" rx="6" fill="#f5f0e8" stroke="#d0c8b8" strokeWidth="1.5"/>
-            <polygon points="250,20 20,340 480,340" fill="#ede4d0" stroke="#d0c8b8" strokeWidth="1"/>
+          {/* Envelope back, letter peeking out of the mouth */}
+          <svg viewBox="0 0 500 340" className="env-svg-thumb" preserveAspectRatio="xMidYMid meet" aria-label="Sealed letter — tap to open">
+            <defs>
+              <clipPath id={`peek-${post.id}`}>
+                <rect x="68" y="22" width="364" height="136" rx="2" />
+              </clipPath>
+              <linearGradient id={`mouth-${post.id}`} x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0" stopColor="rgba(60,40,15,0.35)" />
+                <stop offset="1" stopColor="rgba(60,40,15,0)" />
+              </linearGradient>
+            </defs>
 
-            {/* Letter peeking through */}
-            {imageUrl ? (
-              <g>
-                <clipPath id={`clip-${post.id}`}>
-                  <rect x="80" y="70" width="340" height="210" rx="3"/>
-                </clipPath>
+            {/* Letter sticking out of the envelope */}
+            <g className="env-peek">
+              <rect x="64" y="18" width="372" height="150" rx="2" fill="#fffef9" stroke="#e2d8c4" strokeWidth="1" />
+              {imageUrl ? (
                 <image
                   href={imageUrl}
-                  x="80" y="70"
-                  width="340" height="210"
-                  preserveAspectRatio="xMidYMid slice"
-                  opacity="0.7"
-                  clipPath={`url(#clip-${post.id})`}
-                  onError={(e) => { (e.target as SVGImageElement).setAttribute('opacity', '0'); }}
+                  x="68" y="22"
+                  width="364" height="220"
+                  preserveAspectRatio="xMidYMin slice"
+                  clipPath={`url(#peek-${post.id})`}
+                  onError={(e) => { (e.target as SVGImageElement).setAttribute("opacity", "0"); }}
                 />
-              </g>
-            ) : (
-              <text x="250" y="200" textAnchor="middle" fill="rgba(0,0,0,0.06)" fontSize="12" fontFamily="serif" fontStyle="italic">nothing inside</text>
-            )}
+              ) : (
+                <text x="250" y="100" textAnchor="middle" fill="rgba(0,0,0,0.18)" fontSize="13" fontFamily="serif" fontStyle="italic">a blank page</text>
+              )}
+            </g>
 
-            {/* Stamp on envelope */}
-            <rect x="385" y="50" width="40" height="50" rx="1" fill="#e8d5b0" stroke="#c0a880" strokeWidth="0.5" opacity="0.7"/>
-            <text x="405" y="78" textAnchor="middle" fill="#8b6914" fontSize="6" opacity="0.7">STAMP</text>
+            {/* Envelope body (back side, seams visible) */}
+            <g>
+              <rect x="28" y="150" width="444" height="174" rx="6" fill="#f3ecdc" stroke="#d6cab2" strokeWidth="1.5" />
+              {/* shadow of the mouth on the letter */}
+              <rect x="30" y="151" width="440" height="14" fill={`url(#mouth-${post.id})`} />
+              {/* back seams: two sides meeting at the centre, bottom fold */}
+              <polygon points="30,152 250,262 30,322" fill="#eee5d2" stroke="#d6cab2" strokeWidth="1" />
+              <polygon points="470,152 250,262 470,322" fill="#eee5d2" stroke="#d6cab2" strokeWidth="1" />
+              <polygon points="30,322 250,256 470,322" fill="#f0e8d6" stroke="#d6cab2" strokeWidth="1" />
+            </g>
 
-            {/* Decorative postmark */}
-            <circle cx="370" cy="75" r="18" fill="none" stroke="rgba(0,0,0,0.08)" strokeWidth="0.5"/>
-            <line x1="355" y1="60" x2="385" y2="90" stroke="rgba(0,0,0,0.06)" strokeWidth="0.3"/>
-            <line x1="385" y1="60" x2="355" y2="90" stroke="rgba(0,0,0,0.06)" strokeWidth="0.3"/>
+            {/* Sender's wax seal resting at the mouth */}
+            <g className="env-seal">
+              <circle cx="250" cy="160" r="27" fill={waxColor} opacity="0.95" />
+              <circle cx="250" cy="160" r="27" fill="rgba(0,0,0,0.15)" transform="translate(1.5,2)" style={{ mixBlendMode: "multiply" }} />
+              <circle cx="250" cy="160" r="21" fill="none" stroke="rgba(255,255,255,0.45)" strokeWidth="1.5" />
+              <circle cx="250" cy="160" r="16" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth="1" />
+              <text x="250" y="166" textAnchor="middle" fill="#fff" fontSize="15" fontFamily="serif" fontWeight="bold">{initial}</text>
+            </g>
 
-            {/* Open hint */}
-            <text x="250" y="200" textAnchor="middle" fill="rgba(0,0,0,0.08)" fontSize="10" fontFamily="serif" fontStyle="italic">tap to open</text>
+            {/* Postmark, faint */}
+            <g opacity="0.5">
+              <circle cx="408" cy="200" r="20" fill="none" stroke="rgba(60,40,15,0.25)" strokeWidth="1" />
+              <path d="M392 196 q8 -5 16 0 t16 0" fill="none" stroke="rgba(60,40,15,0.2)" strokeWidth="1" />
+              <path d="M392 204 q8 -5 16 0 t16 0" fill="none" stroke="rgba(60,40,15,0.2)" strokeWidth="1" />
+            </g>
+
+            <text x="250" y="305" textAnchor="middle" fill="rgba(60,40,15,0.28)" fontSize="11" fontFamily="serif" fontStyle="italic" className="env-open-hint">tap to open</text>
           </svg>
 
           <div className="env-meta">
@@ -98,7 +121,7 @@ export function EnvelopeCard({ post, onStamp, isStamping }: EnvelopeCardProps) {
               {post.user.nomDePlume ? (
                 <img src={post.user.nomDePlume} alt="" className="env-av" width={18} height={18} />
               ) : (
-                <span className="env-av-ph">{post.user.username[0].toUpperCase()}</span>
+                <span className="env-av-ph">{initial}</span>
               )}
               <span className="env-name">{post.user.username}</span>
             </div>
@@ -106,8 +129,8 @@ export function EnvelopeCard({ post, onStamp, isStamping }: EnvelopeCardProps) {
           </div>
 
           <div className="env-stats">
-            <span className="env-stat">&#9998; {post._count.scratches}</span>
-            <span className="env-stat">&#9997; {post._count.interactions}</span>
+            <span className="env-stat"><ScratchIcon size={12} /> {post._count.scratches}</span>
+            <span className="env-stat"><StarIcon size={12} /> {post.stampCount || 0}</span>
           </div>
         </div>
 
@@ -115,27 +138,28 @@ export function EnvelopeCard({ post, onStamp, isStamping }: EnvelopeCardProps) {
           .env-card {
             cursor: pointer;
             transition: transform 0.2s, box-shadow 0.2s;
-            border-radius: 12px;
-            background: #fefdf9;
-            border: 1px solid #e0d5c0;
+            border-radius: 6px;
+            background: var(--paper-bright, #fefdf9);
+            border: 1px solid var(--line, #e0d5c0);
             overflow: hidden;
           }
           .env-card:hover {
             transform: translateY(-2px);
-            box-shadow: 0 8px 32px rgba(80,40,20,0.08);
-          }
-          .env-card-inner {
-            padding: 16px;
+            box-shadow: 0 8px 32px rgba(80,40,20,0.1);
           }
           .env-svg-thumb {
             width: 100%;
             max-height: 280px;
             display: block;
-            transition: transform 0.3s;
           }
-          .env-card:hover .env-svg-thumb {
-            transform: scale(1.02);
+          .env-peek {
+            transition: transform 0.35s cubic-bezier(0.2, 0.8, 0.3, 1);
           }
+          .env-card:hover .env-peek {
+            transform: translateY(-8px);
+          }
+          .env-open-hint { opacity: 0; transition: opacity 0.25s; }
+          .env-card:hover .env-open-hint { opacity: 1; }
           .env-meta {
             display: flex;
             align-items: center;
@@ -149,7 +173,7 @@ export function EnvelopeCard({ post, onStamp, isStamping }: EnvelopeCardProps) {
           }
           .env-label {
             font-size: 11px;
-            color: #b0a090;
+            color: var(--faint, #b0a090);
             font-style: italic;
           }
           .env-av {
@@ -158,7 +182,7 @@ export function EnvelopeCard({ post, onStamp, isStamping }: EnvelopeCardProps) {
           }
           .env-av-ph {
             width: 18px; height: 18px; border-radius: 50%;
-            background: #e0d5c0; display: flex; align-items: center;
+            background: var(--line, #e0d5c0); display: flex; align-items: center;
             justify-content: center; font-size: 9px; font-weight: 600; color: #6b5c40;
           }
           .env-name {
@@ -168,14 +192,15 @@ export function EnvelopeCard({ post, onStamp, isStamping }: EnvelopeCardProps) {
           }
           .env-time {
             font-size: 11px;
-            color: #b0a090;
+            color: var(--faint, #b0a090);
           }
+          .env-card-inner { padding: 16px; }
           .env-stats {
             display: flex;
             gap: 12px;
             margin-top: 8px;
             font-size: 12px;
-            color: #8c7a60;
+            color: var(--muted, #8c7a60);
           }
           .env-stat {
             display: flex;
@@ -188,8 +213,7 @@ export function EnvelopeCard({ post, onStamp, isStamping }: EnvelopeCardProps) {
   }
 
   return (
-    <article className={`env-card-opened ${isStamping ? "stamping" : ""}`}
-      style={{ filter: `sepia(${sepiaAmount}) brightness(${brightness})` }}>
+    <article className={`env-card-opened ${isStamping ? "stamping" : ""}`}>
       <div className="open-header">
         <button className="open-fold-btn" onClick={() => setOpened(false)}>
           &#8593; Fold
@@ -198,7 +222,7 @@ export function EnvelopeCard({ post, onStamp, isStamping }: EnvelopeCardProps) {
           {post.user.nomDePlume ? (
             <img src={post.user.nomDePlume} alt="" className="open-av" width={24} height={24} />
           ) : (
-            <span className="open-av-ph">{post.user.username[0].toUpperCase()}</span>
+            <span className="open-av-ph">{initial}</span>
           )}
           <Link href={`/users/${post.user.id}`} className="open-name">
             {post.user.username}
@@ -232,16 +256,16 @@ export function EnvelopeCard({ post, onStamp, isStamping }: EnvelopeCardProps) {
       <div className="open-actions">
         {onStamp && (
           <button
-            className={`stamp-btn ${isStamping ? "stamped" : ""}`}
+            className="stamp-btn"
             onClick={(e) => { e.stopPropagation(); onStamp(post.id); }}
             disabled={isStamping}
           >
-            <span className="stamp-icon">{isStamping ? "⭐" : "☆"}</span>
+            <StarIcon size={15} filled={!!isStamping} />
             <span>{post.stampCount || 0}</span>
           </button>
         )}
         <Link href={`/post/${post.id}`} className="open-discuss-btn">
-          &#9998; {post._count.scratches} scratches
+          <ScratchIcon size={13} /> {post._count.scratches} scratches
         </Link>
       </div>
 
@@ -256,12 +280,17 @@ export function EnvelopeCard({ post, onStamp, isStamping }: EnvelopeCardProps) {
       <style>{`
         .env-card-opened {
           border: 1px solid #d0c8b8;
-          border-radius: 12px;
-          background: #fefdf9;
+          border-radius: 6px;
+          background: var(--paper-bright, #fefdf9);
           overflow: hidden;
           transition: box-shadow 0.2s;
+          animation: env-unfold 0.35s cubic-bezier(0.2, 0.8, 0.3, 1);
         }
-        .env-card-opened.stamping { box-shadow: 0 0 0 2px #c0392b; }
+        @keyframes env-unfold {
+          from { opacity: 0; transform: translateY(10px) scale(0.985); }
+          to { opacity: 1; transform: none; }
+        }
+        .env-card-opened.stamping { box-shadow: 0 0 0 2px var(--ink, #1a1a1a); }
         .open-header {
           display: flex;
           align-items: center;
@@ -272,7 +301,7 @@ export function EnvelopeCard({ post, onStamp, isStamping }: EnvelopeCardProps) {
         .open-fold-btn {
           background: none;
           border: none;
-          color: #8c7a60;
+          color: var(--muted, #8c7a60);
           cursor: pointer;
           font-family: inherit;
           font-size: 13px;
@@ -287,7 +316,7 @@ export function EnvelopeCard({ post, onStamp, isStamping }: EnvelopeCardProps) {
         .open-av { border-radius: 50%; object-fit: cover; }
         .open-av-ph {
           width: 24px; height: 24px; border-radius: 50%;
-          background: #e0d5c0; display: flex; align-items: center;
+          background: var(--line, #e0d5c0); display: flex; align-items: center;
           justify-content: center; font-size: 11px; font-weight: 600; color: #6b5c40;
         }
         .open-name {
@@ -298,11 +327,11 @@ export function EnvelopeCard({ post, onStamp, isStamping }: EnvelopeCardProps) {
         .open-name:hover { text-decoration: underline; }
         .open-time {
           font-size: 11px;
-          color: #b0a090;
+          color: var(--faint, #b0a090);
         }
         .open-letter {
           padding: 0;
-          background: #faf7f0;
+          background: var(--paper, #faf7f0);
         }
         .open-img {
           width: 100%;
@@ -324,27 +353,24 @@ export function EnvelopeCard({ post, onStamp, isStamping }: EnvelopeCardProps) {
           gap: 6px;
           padding: 8px 16px;
           border: 1.5px solid #d0c8b8;
-          border-radius: 20px;
-          background: #fefdf9;
+          border-radius: 8px;
+          background: var(--paper-bright, #fefdf9);
           cursor: pointer;
           font-size: 14px;
           font-family: inherit;
           color: #6b5c40;
           transition: all 0.15s;
         }
-        .stamp-btn:hover { border-color: #c0392b; color: #c0392b; }
-        .stamp-btn.stamped {
-          background: #fff5f0;
-          border-color: #c0392b;
-          color: #c0392b;
-        }
+        .stamp-btn:hover { border-color: var(--ink, #1a1a1a); color: var(--ink, #1a1a1a); }
         .stamp-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-        .stamp-icon { font-size: 16px; }
         .open-discuss-btn {
+          display: flex;
+          align-items: center;
+          gap: 5px;
           padding: 8px 16px;
-          border: 1px solid #e0d5c0;
+          border: 1px solid var(--line, #e0d5c0);
           border-radius: 8px;
-          background: #fefdf9;
+          background: var(--paper-bright, #fefdf9);
           color: #6b5c40;
           font-size: 13px;
           font-family: inherit;
@@ -357,14 +383,14 @@ export function EnvelopeCard({ post, onStamp, isStamping }: EnvelopeCardProps) {
           flex-wrap: wrap;
           gap: 6px;
           padding: 8px 16px 14px;
-          border-top: 1px solid #f0e8d8;
+          border-top: 1px solid var(--line-soft, #f0e8d8);
         }
         .open-tag {
           font-size: 11px;
           color: #6b5c40;
-          background: #f0e8d8;
+          background: var(--line-soft, #f0e8d8);
           padding: 2px 10px;
-          border-radius: 12px;
+          border-radius: 6px;
         }
       `}</style>
     </article>

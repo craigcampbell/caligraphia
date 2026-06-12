@@ -152,7 +152,7 @@ export default function InboxPage() {
           gap: 14px;
           padding: 14px 16px;
           border: 1px solid #e0d5c0;
-          border-radius: 12px;
+          border-radius: 6px;
           background: #fefdf9;
           text-decoration: none;
           color: inherit;

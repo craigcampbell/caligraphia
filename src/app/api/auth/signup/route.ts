@@ -3,6 +3,7 @@ import { verifyMagicToken, setSessionCookie } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { uploadBuffer, getPublicUrl } from "@/lib/storage";
 import { enforceNoTextInput } from "@/lib/no-text-input";
+import { DAILY_STAMP_ALLOWANCE } from "@/lib/stamps";
 import { v4 as uuidv4 } from "uuid";
 
 export async function POST(request: Request) {
@@ -73,6 +74,7 @@ export async function POST(request: Request) {
         username: usernameTrimmed,
         email: payload.email,
         nomDePlume: nomDePlumeUrl,
+        stampBalance: DAILY_STAMP_ALLOWANCE,
       },
     });
 

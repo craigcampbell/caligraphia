@@ -23,7 +23,6 @@ export async function GET(
       },
       _count: {
         select: {
-          interactions: { where: { interactionType: "like" } },
           scratches: true,
         },
       },
@@ -34,11 +33,7 @@ export async function GET(
     return NextResponse.json({ error: "Post not found" }, { status: 404 });
   }
 
-  const dislikeCount = await prisma.postInteraction.count({
-    where: { postId: post.id, interactionType: "dislike" },
-  });
-
-  const userInteraction = await prisma.postInteraction.findUnique({
+  const userStamp = await prisma.postInteraction.findUnique({
     where: {
       postId_userId: {
         postId: post.id,
@@ -48,7 +43,7 @@ export async function GET(
   });
 
   return NextResponse.json({
-    post: { ...post, dislikeCount, userInteraction },
+    post: { ...post, stamped: !!userStamp },
   });
 }
 

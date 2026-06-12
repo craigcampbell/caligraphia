@@ -109,7 +109,7 @@ export function UserSearch({ onSelect, placeholder = "Search by username..." }: 
           padding: 8px 12px;
           background: #f0e8d8;
           border: 1px solid #d0c8b8;
-          border-radius: 20px;
+          border-radius: 8px;
           font-size: 14px;
         }
         .us-av { border-radius: 50%; object-fit: cover; }
@@ -124,7 +124,7 @@ export function UserSearch({ onSelect, placeholder = "Search by username..." }: 
           background: none; border: none; color: #8c7a60; cursor: pointer;
           font-size: 18px; padding: 0 4px; font-family: inherit;
         }
-        .us-clear:hover { color: #c0392b; }
+        .us-clear:hover { color: #1a1a1a; }
         .us-input-wrap {
           position: relative;
           display: flex;
@@ -132,7 +132,7 @@ export function UserSearch({ onSelect, placeholder = "Search by username..." }: 
           gap: 6px;
           padding: 6px 12px;
           border: 1.5px solid #d0c8b8;
-          border-radius: 10px;
+          border-radius: 6px;
           background: #fefdf9;
         }
         .us-input-wrap:focus-within { border-color: #8b4513; }
@@ -150,7 +150,7 @@ export function UserSearch({ onSelect, placeholder = "Search by username..." }: 
         @keyframes us-spin { to { transform: rotate(360deg); } }
         .us-dropdown {
           position: absolute; top: 100%; left: 0; right: 0; z-index: 50;
-          margin-top: 4px; border: 1px solid #e0d5c0; border-radius: 10px;
+          margin-top: 4px; border: 1px solid #e0d5c0; border-radius: 6px;
           background: #fff; box-shadow: 0 8px 24px rgba(0,0,0,0.08);
           max-height: 200px; overflow-y: auto;
         }
@@ -160,7 +160,7 @@ export function UserSearch({ onSelect, placeholder = "Search by username..." }: 
           font-family: inherit; font-size: 14px; text-align: left; color: #2c2416;
         }
         .us-option:hover { background: #faf6ee; }
-        .us-option:first-child { border-radius: 10px 10px 0 0; }
+        .us-option:first-child { border-radius: 6px 10px 0 0; }
         .us-option:last-child { border-radius: 0 0 10px 10px; }
         .us-opt-name { font-weight: 500; }
       `}</style>

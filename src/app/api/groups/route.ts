@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { enforceNoTextInput } from "@/lib/no-text-input";
+import { parseTagList } from "@/lib/tags";
 
 export async function GET() {
   const session = await getSession();
@@ -44,20 +45,20 @@ export async function POST(request: Request) {
     );
   }
 
+  let tags: string[];
   try {
-    new RegExp(tag_pattern);
-  } catch {
-    return NextResponse.json(
-      { error: "tag_pattern must be a valid regex" },
-      { status: 400 }
-    );
+    tags = parseTagList(tag_pattern);
+  } catch (err) {
+    const message =
+      err instanceof Error ? err.message : "Invalid hashtag list";
+    return NextResponse.json({ error: message }, { status: 400 });
   }
 
   const group = await prisma.group.create({
     data: {
       name: name.trim(),
       creatorId: session.userId,
-      tagPattern: tag_pattern.trim(),
+      tagPattern: tags.map((t) => `#${t}`).join(" "),
     },
     include: {
       creator: { select: { id: true, username: true } },

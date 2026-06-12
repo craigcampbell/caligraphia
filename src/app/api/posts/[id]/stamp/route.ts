@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { rateLimitInteraction } from "@/lib/rate-limit";
+import { ensureDailyStamps } from "@/lib/stamps";
 
 export async function POST(
   request: Request,
@@ -22,20 +23,6 @@ export async function POST(
     );
   }
 
-  // Check if user has stamps to spend
-  const user = await prisma.user.findUnique({
-    where: { id: session.userId },
-    select: { stampBalance: true },
-  });
-
-  if (!user || user.stampBalance < 1) {
-    return NextResponse.json(
-      { error: "Not enough stamps. Earn stamps by creating letters." },
-      { status: 402 }
-    );
-  }
-
-  // Check if post exists
   const post = await prisma.post.findUnique({
     where: { id },
     select: { id: true, deletedAt: true },
@@ -45,93 +32,66 @@ export async function POST(
     return NextResponse.json({ error: "Post not found" }, { status: 404 });
   }
 
-  // Check if user already stamped this post
-  const existingLike = await prisma.postInteraction.findUnique({
-    where: { postId_userId: { postId: id, userId: session.userId } },
-  });
+  try {
+    const result = await prisma.$transaction(async (tx) => {
+      await ensureDailyStamps(tx, session.userId);
 
-  if (existingLike && existingLike.interactionType === "like") {
-    // User already stamped (liked) this post — remove the stamp
-    // Refund the stamp
-    await prisma.user.update({
-      where: { id: session.userId },
-      data: { stampBalance: { increment: 1 } },
+      const existing = await tx.postInteraction.findUnique({
+        where: { postId_userId: { postId: id, userId: session.userId } },
+      });
+
+      if (existing) {
+        // Already stamped — remove it and refund
+        await tx.postInteraction.delete({
+          where: { postId_userId: { postId: id, userId: session.userId } },
+        });
+        await tx.user.update({
+          where: { id: session.userId },
+          data: { stampBalance: { increment: 1 } },
+        });
+        const updated = await tx.post.update({
+          where: { id },
+          data: { stampCount: { decrement: 1 } },
+          select: { stampCount: true },
+        });
+        return { action: "un-stamped" as const, stampCount: updated.stampCount };
+      }
+
+      // Spend a stamp; the guarded updateMany keeps two concurrent requests
+      // from driving the balance negative.
+      const spent = await tx.user.updateMany({
+        where: { id: session.userId, stampBalance: { gte: 1 } },
+        data: { stampBalance: { decrement: 1 } },
+      });
+      if (spent.count === 0) {
+        throw new OutOfStampsError();
+      }
+
+      await tx.postInteraction.create({
+        data: { postId: id, userId: session.userId, interactionType: "like" },
+      });
+      const updated = await tx.post.update({
+        where: { id },
+        data: { stampCount: { increment: 1 } },
+        select: { stampCount: true },
+      });
+      return { action: "stamped" as const, stampCount: updated.stampCount };
     });
 
-    await prisma.postInteraction.delete({
-      where: { postId_userId: { postId: id, userId: session.userId } },
-    });
-
-    await prisma.post.update({
-      where: { id },
-      data: { stampCount: { decrement: 1 } },
-    });
-
-    // Mark the stamp as unspent
-    await prisma.stamp.updateMany({
-      where: { spentOnPostId: id, ownerId: session.userId },
-      data: { spentAt: null, spentOnPostId: null },
-    });
-
-    const count = await prisma.post.findUnique({ where: { id }, select: { stampCount: true } });
-
-    return NextResponse.json({
-      action: "un-stamped",
-      stampCount: count?.stampCount || 0,
-    });
+    return NextResponse.json(result);
+  } catch (err) {
+    if (err instanceof OutOfStampsError) {
+      return NextResponse.json(
+        { error: "You're out of stamps for today. Your sheet refills tomorrow." },
+        { status: 402 }
+      );
+    }
+    throw err;
   }
+}
 
-  // Find an unspent stamp to spend
-  const availableStamp = await prisma.stamp.findFirst({
-    where: { ownerId: session.userId, spentAt: null },
-    orderBy: { issuedAt: "asc" },
-  });
-
-  if (!availableStamp) {
-    return NextResponse.json(
-      { error: "No stamps available. Earn stamps by creating letters." },
-      { status: 402 }
-    );
+class OutOfStampsError extends Error {
+  constructor() {
+    super("Out of stamps");
   }
-
-  // Spend the stamp
-  await prisma.stamp.update({
-    where: { id: availableStamp.id },
-    data: { spentAt: new Date(), spentOnPostId: id },
-  });
-
-  // Deduct from user balance
-  await prisma.user.update({
-    where: { id: session.userId },
-    data: { stampBalance: { decrement: 1 } },
-  });
-
-  // Update post stamp count
-  await prisma.post.update({
-    where: { id },
-    data: { stampCount: { increment: 1 } },
-  });
-
-  // Create or update interaction
-  await prisma.postInteraction.upsert({
-    where: { postId_userId: { postId: id, userId: session.userId } },
-    create: {
-      postId: id,
-      userId: session.userId,
-      interactionType: "like",
-    },
-    update: {
-      interactionType: "like",
-    },
-  });
-
-  const count = await prisma.post.findUnique({ where: { id }, select: { stampCount: true } });
-
-  return NextResponse.json({
-    action: "stamped",
-    stampCount: count?.stampCount || 0,
-    spentStampId: availableStamp.id,
-    stampTier: availableStamp.tier,
-    stampIssue: availableStamp.issueNumber,
-  });
 }

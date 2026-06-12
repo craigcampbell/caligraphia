@@ -30,6 +30,14 @@ function renderLine(ctx: CanvasRenderingContext2D, ink: string, x1: number, y1: 
     const wf = Math.abs(Math.cos(angle - nib));
     ctx.lineWidth = Math.max(1.5, (p1 + p2) / 2 * 12) * Math.max(0.3, wf);
     ctx.stroke();
+  } else if (ink === "copperplate") {
+    ctx.lineWidth = Math.max(0.4, (p1 + p2) / 2 * 18);
+    ctx.globalAlpha = 0.92; ctx.stroke(); ctx.globalAlpha = 1;
+  } else if (ink === "brush") {
+    const speed = Math.sqrt(dx * dx + dy * dy);
+    const sf = Math.max(0.4, Math.min(1.2, 200 / (speed + 8)));
+    ctx.lineWidth = Math.max(1.5, (p1 + p2) / 2 * 22 * sf);
+    ctx.globalAlpha = 0.65 + (p1 + p2) / 2 * 0.3; ctx.stroke(); ctx.globalAlpha = 1;
   } else {
     ctx.lineWidth = Math.max(2, (p1 + p2) / 2 * 9);
     ctx.stroke();
@@ -226,8 +234,8 @@ export function DrawingReplay({ strokes, paper = "blank", inkStyle = "standard",
         .speed-btn.active { background: #8b4513; color: #fff; border-color: #8b4513; }
         .speed-btn:hover { border-color: #6b5c40; }
         .replay-play-btn {
-          padding: 6px 16px; border: none; border-radius: 16px;
-          background: linear-gradient(135deg, #2c3e50, #c0392b); color: #fff;
+          padding: 6px 16px; border: none; border-radius: 8px;
+          background: #1a1a1a; color: #fff;
           cursor: pointer; font-size: 13px; font-family: inherit; font-weight: 600;
         }
         .replay-close-btn {
@@ -255,7 +263,7 @@ export function DrawingReplay({ strokes, paper = "blank", inkStyle = "standard",
           height: 3px; background: #2a2418;
         }
         .replay-progress-bar {
-          height: 100%; background: linear-gradient(90deg, #8e44ad, #c0392b);
+          height: 100%; background: #1a1a1a;
           transition: width 0.1s linear;
         }
         .replay-footer {

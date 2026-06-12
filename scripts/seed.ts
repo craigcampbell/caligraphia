@@ -251,13 +251,8 @@ async function main() {
       interactionType: "like",
     },
   });
-  await prisma.postInteraction.create({
-    data: {
-      postId: posts[2].id,
-      userId: users[3].id,
-      interactionType: "dislike",
-    },
-  });
+  await prisma.post.update({ where: { id: posts[0].id }, data: { stampCount: 2 } });
+  await prisma.post.update({ where: { id: posts[1].id }, data: { stampCount: 1 } });
 
   await prisma.scratch.create({
     data: {
@@ -271,14 +266,14 @@ async function main() {
     data: {
       name: "Poetry Circle",
       creatorId: users[0].id,
-      tagPattern: "#poem|#poetry|#verse",
+      tagPattern: "#poem #poetry #verse",
     },
   });
   await prisma.group.create({
     data: {
       name: "Sketches & Doodles",
       creatorId: users[1].id,
-      tagPattern: "#sketch|#drawing|#doodle",
+      tagPattern: "#sketch #drawing #doodle",
     },
   });
 

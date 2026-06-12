@@ -6,7 +6,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useEffect } from "react";
 
 function LoginContent() {
-  const { user, login } = useAuth();
+  const { user, login, refresh } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
@@ -31,6 +31,9 @@ function LoginContent() {
         if (data.needsSignup) {
           router.push(`/signup?signupToken=${encodeURIComponent(data.signupToken)}`);
         } else {
+          // Pull the fresh session into the auth provider before navigating,
+          // otherwise AuthGuard still sees the stale logged-out state and bounces back here
+          await refresh();
           router.push("/");
         }
       } catch { setError("Something went wrong"); }
@@ -64,9 +67,14 @@ function LoginContent() {
         {sent ? (
           <div className="login-sent">
             <div className="sent-icon">&#9993;</div>
-            <p>Magic link sent to <strong>{email}</strong></p>
-            <p className="sent-hint">Dev mode — use the link below:</p>
-            <a href={magicLink} className="magic-link">{magicLink}</a>
+            <p>A letter is on its way to <strong>{email}</strong></p>
+            <p className="sent-hint">Check your inbox for your sign-in link. It expires in 10 minutes.</p>
+            {magicLink && (
+              <>
+                <p className="sent-hint">Dev mode — use the link below:</p>
+                <a href={magicLink} className="magic-link">{magicLink}</a>
+              </>
+            )}
           </div>
         ) : (
           <form onSubmit={handleSend} className="login-form">
@@ -93,41 +101,40 @@ function LoginContent() {
           position: absolute; border-radius: 50%; pointer-events: none; z-index: 0;
           filter: blur(60px); opacity: 0.18;
         }
-        .ink-splat-1 { width: 340px; height: 340px; background: radial-gradient(circle, #c0392b, #e74c3c, transparent); top: -60px; left: 10%; }
-        .ink-splat-2 { width: 260px; height: 260px; background: radial-gradient(circle, #8e44ad, #9b59b6, transparent); bottom: -40px; right: 15%; }
-        .ink-splat-3 { width: 200px; height: 200px; background: radial-gradient(circle, #2471a3, #3498db, transparent); top: 40%; left: 70%; }
+        .ink-splat-1 { width: 340px; height: 340px; background: radial-gradient(circle, #4a3018, #8b6948, transparent); top: -60px; left: 10%; }
+        .ink-splat-2 { width: 260px; height: 260px; background: radial-gradient(circle, #3e2a14, #7a5c3a, transparent); bottom: -40px; right: 15%; }
+        .ink-splat-3 { width: 200px; height: 200px; background: radial-gradient(circle, #54381c, #96764e, transparent); top: 40%; left: 70%; }
         .login-card {
-          background: #fffef9; border: 1px solid #e0d5c0; border-radius: 20px;
+          background: #fffef9; border: 1px solid #e0d5c0; border-radius: 8px;
           padding: 52px 44px; max-width: 430px; width: 100%; text-align: center;
           position: relative; z-index: 1;
           box-shadow: 0 4px 32px rgba(80,40,20,0.08), 0 1px 6px rgba(0,0,0,0.04);
         }
         .brand-mark { font-size: 52px; margin-bottom: 8px; }
-        .brand-mark span { color: #c0392b; }
+        .brand-mark span { color: #1a1a1a; }
         .login-title {
           font-size: 34px; font-weight: 700; margin-bottom: 6px;
-          background: linear-gradient(135deg, #1a1a2e, #8e44ad, #c0392b);
-          -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+          color: #1a1a1a;
           letter-spacing: -1px;
         }
         .login-subtitle { color: #8c7a60; font-size: 14px; margin-bottom: 28px; font-style: italic; }
         .login-form { display: flex; flex-direction: column; gap: 12px; }
         .input-label { text-align: left; font-size: 13px; font-weight: 500; color: #6b5c40; }
         .email-input {
-          padding: 14px 16px; border: 2px solid #d8cfb8; border-radius: 12px;
+          padding: 14px 16px; border: 2px solid #d8cfb8; border-radius: 6px;
           font-size: 15px; font-family: inherit; outline: none; background: #fefdf9;
           user-select: text; -webkit-user-select: text;
         }
         .email-input:focus { border-color: #8b4513; }
         .btn-send {
           margin-top: 8px; padding: 15px;
-          background: linear-gradient(135deg, #2c3e50, #8e44ad);
-          color: #fff; border: none; border-radius: 12px;
+          background: #1a1a1a;
+          color: #fff; border: none; border-radius: 6px;
           font-size: 16px; font-weight: 600; cursor: pointer;
-          font-family: inherit; box-shadow: 0 4px 16px rgba(142,68,173,0.25);
+          font-family: inherit; box-shadow: 0 4px 16px rgba(0,0,0,0.18);
           transition: transform 0.15s, box-shadow 0.15s;
         }
-        .btn-send:hover { transform: translateY(-1px); box-shadow: 0 6px 24px rgba(142,68,173,0.35); }
+        .btn-send:hover { transform: translateY(-1px); box-shadow: 0 6px 24px rgba(0,0,0,0.18); }
         .error-msg { color: #c0392b; font-size: 13px; text-align: left; }
         .login-sent { padding: 20px 0; }
         .sent-icon { font-size: 44px; margin-bottom: 14px; }
@@ -136,7 +143,7 @@ function LoginContent() {
           display: block; color: #2471a3; font-size: 12px; word-break: break-all;
           padding: 8px 12px; background: #eef6fb; border-radius: 8px; margin-top: 8px;
         }
-        .brand-mark { color: #c0392b; }
+        .brand-mark { color: #1a1a1a; }
       `}</style>
     </div>
   );
@@ -144,7 +151,7 @@ function LoginContent() {
 
 export default function LoginPage() {
   return (
-    <Suspense fallback={<div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:"#faf7f0"}}><div style={{width:32,height:32,border:"3px solid #ddd",borderTopColor:"#8e44ad",borderRadius:"50%",animation:"spin 0.8s linear infinite"}} /></div>}>
+    <Suspense fallback={<div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:"#faf7f0"}}><div style={{width:32,height:32,border:"3px solid #ddd",borderTopColor:"#1a1a1a",borderRadius:"50%",animation:"spin 0.8s linear infinite"}} /></div>}>
       <LoginContent />
     </Suspense>
   );

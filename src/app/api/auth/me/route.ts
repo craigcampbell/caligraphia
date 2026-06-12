@@ -15,6 +15,7 @@ export async function GET() {
       username: true,
       nomDePlume: true,
       createdAt: true,
+      stampBalance: true,
       _count: {
         select: {
           posts: true,

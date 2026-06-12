@@ -22,6 +22,21 @@ export async function ensureBucket(): Promise<void> {
   const exists = await client.bucketExists(BUCKET);
   if (!exists) {
     await client.makeBucket(BUCKET);
+    // Posts are served straight from the bucket, so reads must be anonymous
+    await client.setBucketPolicy(
+      BUCKET,
+      JSON.stringify({
+        Version: "2012-10-17",
+        Statement: [
+          {
+            Effect: "Allow",
+            Principal: { AWS: ["*"] },
+            Action: ["s3:GetObject"],
+            Resource: [`arn:aws:s3:::${BUCKET}/*`],
+          },
+        ],
+      })
+    );
   }
 }
 

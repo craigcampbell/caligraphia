@@ -7,6 +7,7 @@ interface User {
   username: string;
   nomDePlume: string | null;
   createdAt: string;
+  stampBalance?: number;
   postCount?: number;
   followerCount?: number;
   followingCount?: number;
@@ -60,7 +61,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
     const data = await res.json();
     if (!res.ok) return { error: data.error };
-    return { magicLink: data.magicLink };
+    return { magicLink: data.devMagicLink };
   };
 
   const logout = async () => {
