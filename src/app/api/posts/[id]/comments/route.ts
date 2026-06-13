@@ -5,6 +5,8 @@ import { uploadBuffer } from "@/lib/storage";
 import { renderCommentToPng, type StrokePoint } from "@/lib/image";
 import { validateCommentStrokes } from "@/lib/validation";
 import { rateLimit } from "@/lib/rate-limit";
+import { canViewPost } from "@/lib/post-access";
+import { serializeComment, serializeComments } from "@/lib/post-dto";
 
 export async function GET(
   _request: Request,
@@ -15,6 +17,11 @@ export async function GET(
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
 
+  const post = await prisma.post.findUnique({ where: { id: params.id } });
+  if (!canViewPost(post, session.userId)) {
+    return NextResponse.json({ error: "Post not found" }, { status: 404 });
+  }
+
   const comments = await prisma.comment.findMany({
     where: { postId: params.id, deletedAt: null },
     include: {
@@ -23,7 +30,7 @@ export async function GET(
     orderBy: { createdAt: "asc" },
   });
 
-  return NextResponse.json({ comments });
+  return NextResponse.json({ comments: serializeComments(comments) });
 }
 
 export async function POST(
@@ -44,7 +51,7 @@ export async function POST(
   }
 
   const post = await prisma.post.findUnique({ where: { id: params.id } });
-  if (!post || post.deletedAt) {
+  if (!canViewPost(post, session.userId)) {
     return NextResponse.json({ error: "Post not found" }, { status: 404 });
   }
 
@@ -84,5 +91,5 @@ export async function POST(
     },
   });
 
-  return NextResponse.json({ comment }, { status: 201 });
+  return NextResponse.json({ comment: serializeComment(comment) }, { status: 201 });
 }

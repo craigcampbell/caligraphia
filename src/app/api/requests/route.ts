@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { serializePost } from "@/lib/post-dto";
 
 const requestInclude = {
   requester: { select: { id: true, username: true, nomDePlume: true } },
@@ -33,5 +34,13 @@ export async function GET(request: Request) {
     take: 100,
   });
 
-  return NextResponse.json({ requests });
+  return NextResponse.json({
+    requests: requests.map((request) => ({
+      ...request,
+      requestPost: serializePost(request.requestPost),
+      fulfillmentPost: request.fulfillmentPost
+        ? serializePost(request.fulfillmentPost)
+        : null,
+    })),
+  });
 }

@@ -8,6 +8,7 @@ interface EnvelopeCardProps {
   post: {
     id: string;
     postType: string;
+    imageUrl?: string | null;
     finalImageUrl: string | null;
     uploadedPhotoUrl: string | null;
     envelopeData: any;
@@ -30,7 +31,7 @@ interface EnvelopeCardProps {
 
 export function EnvelopeCard({ post, onStamp, isStamping }: EnvelopeCardProps) {
   const [opened, setOpened] = useState(false);
-  const imageUrl = post.finalImageUrl || post.uploadedPhotoUrl;
+  const imageUrl = post.imageUrl || post.finalImageUrl || post.uploadedPhotoUrl;
   const waxColor = post.envelopeData?.waxSealColor || "#b22222";
   const initial = post.user.username[0]?.toUpperCase() || "?";
 

@@ -4,7 +4,12 @@ import { enforceNoTextInput } from "../src/lib/no-text-input";
 describe("enforceNoTextInput", () => {
   it("allows whitelisted fields", () => {
     expect(() =>
-      enforceNoTextInput({ email: "a@b.com", username: "inky" })
+      enforceNoTextInput({
+        email: "a@b.com",
+        username: "inky",
+        native_drawing_data_base64: Buffer.alloc(96, 1).toString("base64"),
+        rendered_image_data_base64: Buffer.alloc(512, 2).toString("base64"),
+      })
     ).not.toThrow();
   });
 

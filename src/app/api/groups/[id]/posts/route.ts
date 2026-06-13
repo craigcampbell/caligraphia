@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { groupHashtagLiterals } from "@/lib/tags";
+import { serializePosts } from "@/lib/post-dto";
 
 export async function GET(
   request: Request,
@@ -28,6 +29,7 @@ export async function GET(
       deletedAt: null,
       isPrivate: false,
       needsReview: false,
+      OR: [{ deliverAt: null }, { deliverAt: { lte: new Date() } }],
       ocrHashtags: { hasSome: tags },
     },
     include: {
@@ -41,5 +43,5 @@ export async function GET(
 
   const nextCursor = posts.length === limit ? posts[posts.length - 1].id : null;
 
-  return NextResponse.json({ posts, nextCursor });
+  return NextResponse.json({ posts: serializePosts(posts), nextCursor });
 }

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { serializePost } from "@/lib/post-dto";
 
 export async function GET(
   _request: Request,
@@ -29,7 +30,15 @@ export async function GET(
     return NextResponse.json({ error: "Request not found" }, { status: 404 });
   }
 
-  return NextResponse.json({ request: letterRequest });
+  return NextResponse.json({
+    request: {
+      ...letterRequest,
+      requestPost: serializePost(letterRequest.requestPost),
+      fulfillmentPost: letterRequest.fulfillmentPost
+        ? serializePost(letterRequest.fulfillmentPost)
+        : null,
+    },
+  });
 }
 
 // Withdraw a request you made (only while it's still open)

@@ -1,5 +1,6 @@
 import sharp from "sharp";
 import { renderStrokes, type StrokePoint } from "./ink-engine";
+import { getObjectBuffer } from "./storage";
 
 export type { StrokePoint };
 
@@ -211,8 +212,7 @@ export async function compositeScratchOverlay(
   baseImageUrl: string,
   scratchSvgData: string
 ): Promise<Buffer> {
-  const response = await fetch(baseImageUrl);
-  const baseBuffer = Buffer.from(await response.arrayBuffer());
+  const { buffer: baseBuffer } = await getObjectBuffer(baseImageUrl);
   const baseImage = await sharp(baseBuffer)
     .resize(CANVAS_WIDTH, CANVAS_HEIGHT, { fit: "fill" })
     .toFormat("png")

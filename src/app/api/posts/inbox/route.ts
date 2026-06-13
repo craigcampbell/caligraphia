@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { serializePosts } from "@/lib/post-dto";
 
 export async function GET(request: Request) {
   const session = await getSession();
@@ -47,5 +48,5 @@ export async function GET(request: Request) {
     },
   });
 
-  return NextResponse.json({ posts, nextCursor, unreadCount });
+  return NextResponse.json({ posts: serializePosts(posts), nextCursor, unreadCount });
 }

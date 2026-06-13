@@ -1,6 +1,7 @@
 import { Client } from "minio";
 
 let _client: Client | null = null;
+let privatePolicyChecked = false;
 
 function getClient(): Client {
   if (!_client) {
@@ -22,22 +23,8 @@ export async function ensureBucket(): Promise<void> {
   const exists = await client.bucketExists(BUCKET);
   if (!exists) {
     await client.makeBucket(BUCKET);
-    // Posts are served straight from the bucket, so reads must be anonymous
-    await client.setBucketPolicy(
-      BUCKET,
-      JSON.stringify({
-        Version: "2012-10-17",
-        Statement: [
-          {
-            Effect: "Allow",
-            Principal: { AWS: ["*"] },
-            Action: ["s3:GetObject"],
-            Resource: [`arn:aws:s3:::${BUCKET}/*`],
-          },
-        ],
-      })
-    );
   }
+  await ensurePrivateBucketPolicy(client);
 }
 
 export async function uploadBuffer(
@@ -70,7 +57,59 @@ export function getPublicUrl(key: string): string {
   return `http://${publicEndpoint}:${publicPort}/${BUCKET}/${key}`;
 }
 
+export async function getObjectBuffer(
+  urlOrKey: string
+): Promise<{ buffer: Buffer; contentType: string | null }> {
+  const client = getClient();
+  const key = objectKeyFromUrl(urlOrKey);
+  const stream = (await client.getObject(BUCKET, key)) as AsyncIterable<
+    Buffer | Uint8Array | string
+  > & {
+    headers?: Record<string, string | string[] | undefined>;
+  };
+
+  const chunks: Buffer[] = [];
+  for await (const chunk of stream) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  }
+
+  const rawContentType = stream.headers?.["content-type"];
+  const contentType = Array.isArray(rawContentType)
+    ? rawContentType[0] ?? null
+    : rawContentType ?? null;
+
+  return { buffer: Buffer.concat(chunks), contentType };
+}
+
+function objectKeyFromUrl(urlOrKey: string): string {
+  try {
+    const url = new URL(urlOrKey);
+    const pathSegments = url.pathname.split("/").filter(Boolean);
+    const bucketIndex = pathSegments.indexOf(BUCKET);
+    if (bucketIndex >= 0) {
+      return decodeURIComponent(pathSegments.slice(bucketIndex + 1).join("/"));
+    }
+  } catch {
+    // Already a storage key.
+  }
+
+  return urlOrKey;
+}
+
 export async function deleteObject(key: string): Promise<void> {
   const client = getClient();
   await client.removeObject(BUCKET, key);
+}
+
+async function ensurePrivateBucketPolicy(client: Client): Promise<void> {
+  if (privatePolicyChecked || process.env.MINIO_ENFORCE_PRIVATE_POLICY === "false") {
+    return;
+  }
+
+  privatePolicyChecked = true;
+  try {
+    await client.setBucketPolicy(BUCKET, "");
+  } catch (err) {
+    console.warn("Could not clear MinIO bucket policy; media proxies still enforce app access", err);
+  }
 }

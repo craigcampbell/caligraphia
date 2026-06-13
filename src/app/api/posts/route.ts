@@ -6,10 +6,11 @@ import { renderCanvasToPng, renderPostcardToPng, type StrokePoint } from "@/lib/
 import { sendLetterArrivedEmail } from "@/lib/email";
 import { extractOcrFromImage } from "@/lib/ocr";
 import { enforceNoTextInput } from "@/lib/no-text-input";
-import { validateCanvasPost } from "@/lib/validation";
+import { validateCanvasPost, validateNativeCanvasPost } from "@/lib/validation";
 import { rateLimitPostCreation } from "@/lib/rate-limit";
 import { groupHashtagLiterals } from "@/lib/tags";
 import { attachLetterToExchange } from "@/lib/exchange";
+import { serializePost, serializePosts } from "@/lib/post-dto";
 import { v4 as uuidv4 } from "uuid";
 
 export async function GET(request: Request) {
@@ -29,6 +30,7 @@ export async function GET(request: Request) {
     // Only show public, reviewed posts in the main feed
     isPrivate: false,
     needsReview: false,
+    OR: [{ deliverAt: null }, { deliverAt: { lte: new Date() } }],
     // Handwritten asks live on the Request Board, not in the feed
     requestAsk: null,
   };
@@ -59,7 +61,7 @@ export async function GET(request: Request) {
   const nextCursor =
     posts.length === limit ? posts[posts.length - 1].id : null;
 
-  return NextResponse.json({ posts, nextCursor });
+  return NextResponse.json({ posts: serializePosts(posts), nextCursor });
 }
 
 export async function POST(request: Request) {
@@ -79,7 +81,11 @@ export async function POST(request: Request) {
   const contentType = request.headers.get("content-type") || "";
 
   if (contentType.includes("application/json")) {
-    return handleCanvasPost(request, session);
+    const body = await request.json();
+    if (typeof body === "object" && body && "native_drawing_data_base64" in body) {
+      return handleNativeCanvasPost(body as Record<string, unknown>, session);
+    }
+    return handleCanvasPost(body as Record<string, unknown>, session);
   } else if (contentType.includes("multipart/form-data")) {
     return handlePhotoPost(request, session);
   }
@@ -93,8 +99,7 @@ export async function POST(request: Request) {
 // Postcards are a quicker format than a proper letter
 const POSTCARD_MIN_DRAW_MS = 8_000;
 
-async function handleCanvasPost(request: Request, session: { userId: string; username: string }) {
-  const body = await request.json();
+async function handleCanvasPost(body: Record<string, unknown>, session: { userId: string; username: string }) {
   enforceNoTextInput(body);
 
   const format = body.format === "postcard" ? "postcard" : "letter";
@@ -106,9 +111,9 @@ async function handleCanvasPost(request: Request, session: { userId: string; use
   const previewOnly = body.preview_only === true;
   const envelopeData = body.envelope_data || null;
   const signatureData = body.signature_data || null;
-  const recipientId = body.recipient_id || null;
+  const recipientId = (body.recipient_id as string) || null;
   const isDeadLetter = body.is_dead_letter === true;
-  const isPrivate = body.is_private === true || isDeadLetter;
+  const isPrivate = isTruthy(body.is_private) || !!recipientId || isDeadLetter;
   // Slow post: the letter travels overnight and arrives at 8 the next morning
   const slowPost = body.delivery === "slow" && !!recipientId;
   let deliverAt: Date | null = null;
@@ -232,7 +237,90 @@ async function handleCanvasPost(request: Request, session: { userId: string; use
   // Reward the user with a collectible stamp for posting
   await giveStampReward(session.userId);
 
-  return NextResponse.json({ post }, { status: 201 });
+  return NextResponse.json({ post: serializePost(post) }, { status: 201 });
+}
+
+async function handleNativeCanvasPost(body: Record<string, unknown>, session: { userId: string; username: string }) {
+  enforceNoTextInput(body);
+
+  const format = body.format === "postcard" ? "postcard" : "letter";
+  const { drawingData, renderedImageData } = validateNativeCanvasPost(
+    body,
+    format === "postcard" ? POSTCARD_MIN_DRAW_MS : undefined
+  );
+
+  const paper = (body.paper as string) || "blank";
+  const inkStyle = (body.ink_style as string) || "standard";
+  const envelopeData = body.envelope_data || null;
+  const signatureData = body.signature_data || null;
+  const recipientId = (body.recipient_id as string) || null;
+  const isDeadLetter = body.is_dead_letter === true;
+  const isPrivate = isTruthy(body.is_private) || !!recipientId || isDeadLetter;
+  const slowPost = body.delivery === "slow" && !!recipientId;
+  let deliverAt: Date | null = null;
+  if (slowPost) {
+    deliverAt = new Date();
+    deliverAt.setDate(deliverAt.getDate() + 1);
+    deliverAt.setHours(8, 0, 0, 0);
+  }
+
+  const drawingKey = `native-drawings/${uuidv4()}.pkdrawing`;
+  const drawingDataUrl = await uploadBuffer(
+    drawingKey,
+    drawingData,
+    "application/octet-stream"
+  );
+
+  const sharp = (await import("sharp")).default;
+  const compressedBuffer = await sharp(renderedImageData).png({ quality: 85 }).toBuffer();
+  const imageKey = `posts/${uuidv4()}.png`;
+  const imageUrl = await uploadBuffer(imageKey, compressedBuffer, "image/png");
+
+  const { text, hashtags } = await extractOcrFromImage(compressedBuffer);
+
+  const post = await prisma.post.create({
+    data: {
+      userId: session.userId,
+      postType: "canvas",
+      canvasStrokeData: {
+        format: "pencilkit-v1",
+        source: "ios",
+        drawingDataUrl,
+        paper,
+        inkStyle,
+      },
+      paperType: paper,
+      inkStyle,
+      finalImageUrl: imageUrl,
+      envelopeData: envelopeData ? (envelopeData as object) : undefined,
+      signatureData: signatureData ? (signatureData as object) : undefined,
+      recipientId: isDeadLetter ? undefined : recipientId || undefined,
+      isPrivate,
+      format,
+      deliverAt: deliverAt || undefined,
+      isDeadLetter,
+      ocrText: text,
+      ocrHashtags: hashtags,
+    },
+    include: {
+      user: { select: { id: true, username: true, nomDePlume: true } },
+    },
+  });
+
+  if (recipientId && !isDeadLetter) {
+    await attachLetterToExchange(session.userId, recipientId, post.id);
+    const recipient = await prisma.user.findUnique({
+      where: { id: recipientId },
+      select: { email: true },
+    });
+    if (recipient) {
+      await sendLetterArrivedEmail(recipient.email, session.username, { slow: slowPost });
+    }
+  }
+
+  await giveStampReward(session.userId);
+
+  return NextResponse.json({ post: serializePost(post) }, { status: 201 });
 }
 
 async function handlePhotoPost(request: Request, session: { userId: string; username: string }) {
@@ -250,7 +338,7 @@ async function handlePhotoPost(request: Request, session: { userId: string; user
   }
 
   const recipientId = bodyObj.recipient_id as string || null;
-  const isPrivate = bodyObj.is_private === true || !!recipientId;
+  const isPrivate = isTruthy(bodyObj.is_private) || !!recipientId;
 
   const arrayBuffer = await photoFile.arrayBuffer();
   const photoBuffer = Buffer.from(arrayBuffer);
@@ -304,7 +392,7 @@ async function handlePhotoPost(request: Request, session: { userId: string; user
 
   return NextResponse.json(
     {
-      post,
+      post: serializePost(post),
       ...(needsReview
         ? {
             notice:
@@ -314,6 +402,10 @@ async function handlePhotoPost(request: Request, session: { userId: string; user
     },
     { status: 201 }
   );
+}
+
+function isTruthy(value: unknown): boolean {
+  return value === true || value === "true" || value === "1" || value === "on";
 }
 
 // Reward a user with a collectible stamp (and +1 spendable) for creating a post

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { uploadBuffer } from "@/lib/storage";
+import { serializePost } from "@/lib/post-dto";
 import {
   renderRobinSectionToPng,
   cropRobinPeek,
@@ -49,7 +50,7 @@ export async function GET() {
       contributors: r.sections.map((s) => s.user.username),
       alreadyJoined: r.sections.some((s) => s.userId === session.userId),
       peekUrl: r.status === "open" ? last?.peekUrl ?? null : null,
-      finalPost: r.status === "done" ? r.finalPost : null,
+      finalPost: r.status === "done" && r.finalPost ? serializePost(r.finalPost) : null,
     };
   });
 

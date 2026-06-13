@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { canViewPost } from "@/lib/post-access";
+import { serializePost } from "@/lib/post-dto";
 
 export async function GET(
   _request: Request,
@@ -37,12 +39,7 @@ export async function GET(
     },
   });
 
-  if (!post || post.deletedAt) {
-    return NextResponse.json({ error: "Post not found" }, { status: 404 });
-  }
-
-  // Slow post still in transit: only the sender may see it
-  if (post.deliverAt && post.deliverAt > new Date() && post.userId !== session.userId) {
+  if (!post || !canViewPost(post, session.userId)) {
     return NextResponse.json({ error: "Post not found" }, { status: 404 });
   }
 
@@ -56,7 +53,7 @@ export async function GET(
   });
 
   return NextResponse.json({
-    post: { ...post, stamped: !!userStamp },
+    post: serializePost({ ...post, stamped: !!userStamp }),
   });
 }
 

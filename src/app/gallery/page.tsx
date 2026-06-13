@@ -7,6 +7,7 @@ import { NavBar } from "@/components/NavBar";
 
 interface GalleryPost {
   id: string;
+  imageUrl?: string | null;
   finalImageUrl: string | null;
   uploadedPhotoUrl: string | null;
   ocrHashtags: string[];
@@ -165,7 +166,7 @@ export default function GalleryPage() {
             const nearFade = Math.max(0, Math.min(1, (-rel - 40) / 200));
             const farFade = Math.max(0, Math.min(1, (3600 + rel) / 900));
             const opacity = nearFade * farFade;
-            const img = post.finalImageUrl || post.uploadedPhotoUrl;
+            const img = post.imageUrl || post.finalImageUrl || post.uploadedPhotoUrl;
             return (
               <div
                 key={post.id}

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { uploadBuffer } from "@/lib/storage";
+import { getObjectBuffer, uploadBuffer } from "@/lib/storage";
 import {
   renderRobinSectionToPng,
   cropRobinPeek,
@@ -100,10 +100,7 @@ export async function POST(
       orderBy: { position: "asc" },
     });
     const buffers = await Promise.all(
-      sections.map(async (s) => {
-        const res = await fetch(s.imageUrl);
-        return Buffer.from(await res.arrayBuffer());
-      })
+      sections.map(async (s) => (await getObjectBuffer(s.imageUrl)).buffer)
     );
     const finalPng = await compositeRobin(buffers);
     const finalUrl = await uploadBuffer(`robins/${key}-final.png`, finalPng, "image/png");

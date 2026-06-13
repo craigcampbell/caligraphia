@@ -9,6 +9,7 @@ import { DailyPromptCard } from "@/components/DailyPromptCard";
 interface BoardPost {
   id: string;
   postType: string;
+  imageUrl?: string | null;
   finalImageUrl: string | null;
   uploadedPhotoUrl: string | null;
   stampCount: number;
@@ -177,7 +178,7 @@ export default function BoardPage() {
           </div>
           {posts.map((post, i) => {
             const L = layouts[i];
-            const img = post.finalImageUrl || post.uploadedPhotoUrl;
+            const img = post.imageUrl || post.finalImageUrl || post.uploadedPhotoUrl;
             return (
               <div
                 key={post.id}
@@ -221,7 +222,7 @@ export default function BoardPage() {
         )}
 
         {picked && (() => {
-          const img = picked.finalImageUrl || picked.uploadedPhotoUrl;
+          const img = picked.imageUrl || picked.finalImageUrl || picked.uploadedPhotoUrl;
           return (
             <div className="cork-modal-bg" onClick={() => setPicked(null)} onPointerDown={(e) => e.stopPropagation()}>
               <div className="cork-modal" onClick={(e) => e.stopPropagation()}>

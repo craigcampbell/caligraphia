@@ -6,9 +6,14 @@ import { usePenSounds } from "@/hooks/usePenSounds";
 import {
   renderSegment,
   drawDot,
+  renderStrokes,
+  reseed,
+  DEFAULT_INK_SEED,
+  STROKE_GAP_MS,
   INK_STYLES,
   REFERENCE_WIDTH,
   type InkId,
+  type StrokePoint,
 } from "@/lib/ink-engine";
 
 const DEFAULT_W = 2400;
@@ -28,19 +33,8 @@ type PaperId = (typeof PAPER_PRESETS)[number]["id"];
 const INK_COLORS = [
   "#1a1a2e", "#c0392b", "#2471a3", "#27ae60", "#8e44ad",
   "#d35400", "#e84393", "#2c3e50", "#6f4e37", "#16a085",
-  "#e8e8f0",
+  "#d4af37", "#b8860b", "#fff1a8", "#e8e8f0",
 ];
-
-interface StrokePoint {
-  time: number;
-  x: number;
-  y: number;
-  pressure: number;
-  color: string;
-  ink?: InkId;
-  tiltX?: number;
-  tiltY?: number;
-}
 
 interface Props {
   onComplete: (strokes: StrokePoint[], drawingDurationMs: number, paper: PaperId, inkStyle: InkId) => void;
@@ -178,25 +172,8 @@ export function CanvasDraw({
 
   const redraw = (ctx: CanvasRenderingContext2D) => {
     drawPaper(ctx, paper, canvasW, canvasH);
-    const pts = strokesRef.current;
-    for (let i = 0; i < pts.length; i++) {
-      const p = pts[i];
-      // Each point remembers the pen it was drawn with, so switching pens
-      // mid-letter survives undo/resize redraws
-      const ink = p.ink || inkStyle;
-      const px = p.x * canvasW;
-      const py = p.y * canvasH;
-      if (i > 0) {
-        const prev = pts[i - 1];
-        if (p.time - prev.time < 300) {
-          renderSegment(ctx, ink, prev.x * canvasW, prev.y * canvasH, px, py, prev.pressure, p.pressure, p.color, inkScale);
-        } else {
-          drawDot(ctx, ink, px, py, p.pressure, p.color, inkScale);
-        }
-      } else {
-        drawDot(ctx, ink, px, py, p.pressure, p.color, inkScale);
-      }
-    }
+    reseed(DEFAULT_INK_SEED);
+    renderStrokes(ctx, strokesRef.current, inkStyle, canvasW, canvasH);
   };
 
   const startTimer = () => {
@@ -261,7 +238,7 @@ export function CanvasDraw({
     const prev = lastPtRef.current;
     if (prev) {
       const lastStroke = strokesRef.current[strokesRef.current.length - 2];
-      if (lastStroke && now - lastStroke.time < 300) {
+      if (lastStroke && now - lastStroke.time < STROKE_GAP_MS) {
         renderSegment(ctx, inkStyle, prev.px, prev.py, px, py, prev.pressure, pressure, selectedColor, inkScale);
       } else {
         drawDot(ctx, inkStyle, px, py, pressure, selectedColor, inkScale);
@@ -397,6 +374,14 @@ export function CanvasDraw({
           {INK_COLORS.map((c) => (
             <button key={c} className={`ink-swatch ${selectedColor === c ? "active" : ""}`} onClick={() => setSelectedColor(c)} style={{ background: c }} aria-label={c} />
           ))}
+          <label className="custom-color" title="Choose custom ink color">
+            <input
+              type="color"
+              value={selectedColor}
+              onChange={(e) => setSelectedColor(e.currentTarget.value.toLowerCase())}
+              aria-label="Choose custom ink color"
+            />
+          </label>
         </div>
 
         <div className="canvas-status">
@@ -487,6 +472,15 @@ export function CanvasDraw({
         .ink-swatch { width: 24px; height: 24px; border-radius: 50%; border: 2px solid transparent; cursor: pointer; padding: 0; transition: transform 0.12s; }
         .ink-swatch.active { border-color: #333; transform: scale(1.25); box-shadow: 0 0 6px rgba(0,0,0,0.2); }
         .ink-swatch:hover { transform: scale(1.15); }
+        .custom-color {
+          width: 26px; height: 26px; border-radius: 50%; border: 1.5px solid #d0c8b8;
+          background: conic-gradient(#c0392b, #d4af37, #27ae60, #2471a3, #8e44ad, #c0392b);
+          display: inline-flex; align-items: center; justify-content: center; cursor: pointer;
+          overflow: hidden;
+        }
+        .custom-color input {
+          width: 34px; height: 34px; opacity: 0; cursor: pointer; border: 0; padding: 0;
+        }
         .canvas-status { display: flex; gap: 10px; align-items: center; font-size: 13px; margin-left: auto; }
         .ink-level-wrap {
           display: flex;

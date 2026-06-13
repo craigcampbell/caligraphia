@@ -5,3 +5,8 @@ node_modules
 tsconfig.tsbuildinfo
 # Tesseract language data — downloaded at runtime, never committed
 *.traineddata
+
+# Android local build state
+android/.gradle/
+android/**/build/
+android/local.properties

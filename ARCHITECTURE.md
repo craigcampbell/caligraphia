@@ -1,5 +1,7 @@
 # Croquia — Hand-Drawn Social Network
 
+> 2026-06-13 status note: this is an early architecture snapshot. The current app has moved toward a correspondence-first Caligraphia product with stamp reactions, native iOS/Android clients, authenticated media proxies, and a shared parity ledger. Use `docs/0613.md`, `docs/parity/TRACKER.md`, and `docs/parity/API_CONTRACT.md` for current implementation status.
+
 ## Core Constraint
 Users cannot type text anywhere in the application — no text inputs, no keyboards, no pasting. The only exception is the **username field at signup** (single text input). All content creation must use a drawing canvas or photo upload. The goal is to force intentional, authentic expression — no copypasta, no automation, no slop.
 
@@ -173,6 +175,4 @@ created_at: timestamp
 - Embedding external content (links, videos)
 - ML-based handwriting detection
 - WebSockets / real-time features
-- Mobile native apps (responsive web only)
-
-
+- Historical note: mobile native apps were originally out of scope here, but iOS and Android are now active workstreams tracked in `docs/0613.md`.

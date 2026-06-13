@@ -22,6 +22,9 @@ const ALLOWED_STRING_FIELDS = new Set([
   "send_to",
   "format",
   "delivery",
+  "native_drawing_data_base64",
+  "rendered_image_data_base64",
+  "source",
 ]);
 
 const FORBIDDEN_FIELD_PATTERNS = [

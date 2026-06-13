@@ -1,9 +1,11 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { uploadBuffer, getPublicUrl } from "@/lib/storage";
+import { uploadBuffer } from "@/lib/storage";
 import { compositeScratchOverlay } from "@/lib/image";
 import { enforceNoTextInput } from "@/lib/no-text-input";
+import { canViewPost } from "@/lib/post-access";
+import { serializeScratch } from "@/lib/post-dto";
 import { v4 as uuidv4 } from "uuid";
 
 export async function POST(
@@ -27,7 +29,7 @@ export async function POST(
   }
 
   const post = await prisma.post.findUnique({ where: { id: params.id } });
-  if (!post || post.deletedAt) {
+  if (!post || !canViewPost(post, session.userId)) {
     return NextResponse.json({ error: "Post not found" }, { status: 404 });
   }
 
@@ -67,5 +69,5 @@ export async function POST(
     }
   }
 
-  return NextResponse.json({ scratch }, { status: 201 });
+  return NextResponse.json({ scratch: serializeScratch(scratch) }, { status: 201 });
 }

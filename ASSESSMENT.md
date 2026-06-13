@@ -2,6 +2,8 @@
 
 *Written 2026-06-09 after a full read of VISION.md, ARCHITECTURE.md, the schema, all API routes, and the frontend.*
 
+> 2026-06-13 status note: this is a historical product assessment, not the current execution ledger. Auth, tests, API access checks, mobile scaffolds, media proxies, and native send paths have moved since this was written. Use `docs/0613.md` and `docs/parity/TRACKER.md` for current web/iOS/Android status.
+
 ---
 
 ## The Verdict

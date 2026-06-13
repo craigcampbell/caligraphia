@@ -16,6 +16,7 @@ interface MiniUser {
 
 interface MiniPost {
   id: string;
+  imageUrl?: string | null;
   finalImageUrl: string | null;
   uploadedPhotoUrl: string | null;
   createdAt: string;
@@ -146,7 +147,7 @@ export default function RequestBoardPage() {
           )}
           <div className="rq-grid">
             {open.map((r) => {
-              const askImg = r.requestPost.finalImageUrl || r.requestPost.uploadedPhotoUrl;
+              const askImg = r.requestPost.imageUrl || r.requestPost.finalImageUrl || r.requestPost.uploadedPhotoUrl;
               const forMe = user?.id === r.requestee.id;
               const mine = user?.id === r.requester.id;
               return (
@@ -182,8 +183,8 @@ export default function RequestBoardPage() {
             <h2 className="rq-section-title">Answered</h2>
             <div className="rq-answered-list">
               {answered.map((r) => {
-                const askImg = r.requestPost.finalImageUrl || r.requestPost.uploadedPhotoUrl;
-                const ansImg = r.fulfillmentPost?.finalImageUrl || r.fulfillmentPost?.uploadedPhotoUrl;
+                const askImg = r.requestPost.imageUrl || r.requestPost.finalImageUrl || r.requestPost.uploadedPhotoUrl;
+                const ansImg = r.fulfillmentPost?.imageUrl || r.fulfillmentPost?.finalImageUrl || r.fulfillmentPost?.uploadedPhotoUrl;
                 return (
                   <div key={r.id} className="rq-answered-card">
                     <div className="rq-answered-pair">

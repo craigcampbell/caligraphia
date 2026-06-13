@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { rateLimit } from "@/lib/rate-limit";
+import { serializePost } from "@/lib/post-dto";
 
 const unclaimed = (userId: string) => ({
   isDeadLetter: true,
@@ -70,7 +71,7 @@ export async function POST() {
         where: { id: pick.id },
         include: { user: { select: { id: true, username: true, nomDePlume: true } } },
       });
-      return NextResponse.json({ post }, { status: 200 });
+      return NextResponse.json({ post: post ? serializePost(post) : null }, { status: 200 });
     }
   }
 

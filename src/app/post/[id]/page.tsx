@@ -92,8 +92,10 @@ export default function PostDetailPage() {
 
   const imageUrl =
     post.compositeImageUrl ||
+    post.imageUrl ||
     post.finalImageUrl ||
     post.uploadedPhotoUrl;
+  const canReplay = Array.isArray(post.canvasStrokeData);
 
   const isOwner = user?.id === post.user.id;
 
@@ -123,7 +125,7 @@ export default function PostDetailPage() {
             >
               Scratch
             </button>
-            {post.canvasStrokeData && (
+            {canReplay && (
               <button
                 onClick={() => setReplayMode(true)}
                 className="btn-replay"
@@ -186,7 +188,7 @@ export default function PostDetailPage() {
         />
       )}
 
-      {replayMode && post.canvasStrokeData && (
+      {replayMode && canReplay && (
         <DrawingReplay
           strokes={post.canvasStrokeData}
           paper={post.paperType || "ruled"}

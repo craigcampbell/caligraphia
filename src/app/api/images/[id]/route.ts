@@ -1,22 +1,38 @@
 import { NextResponse } from "next/server";
-import { PrismaClient } from "@prisma/client";
-
-const prisma = new PrismaClient();
+import { getSession } from "@/lib/auth";
+import { canViewPost } from "@/lib/post-access";
+import { prisma } from "@/lib/prisma";
+import { getObjectBuffer } from "@/lib/storage";
 
 // Serve post images through Next.js to avoid MinIO hostname issues
 export async function GET(
   _request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const session = await getSession();
+  if (!session) {
+    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+  }
+
   const { id } = await params;
 
   try {
     const post = await prisma.post.findUnique({
       where: { id },
-      select: { finalImageUrl: true, uploadedPhotoUrl: true },
+      select: {
+        finalImageUrl: true,
+        uploadedPhotoUrl: true,
+        userId: true,
+        recipientId: true,
+        isPrivate: true,
+        isDeadLetter: true,
+        needsReview: true,
+        deliverAt: true,
+        deletedAt: true,
+      },
     });
 
-    if (!post) {
+    if (!post || !canViewPost(post, session.userId)) {
       return NextResponse.json({ error: "Post not found" }, { status: 404 });
     }
 
@@ -25,17 +41,11 @@ export async function GET(
       return NextResponse.json({ error: "No image" }, { status: 404 });
     }
 
-    // Fetch from MinIO internally and proxy
-    const response = await fetch(imageUrl);
-    if (!response.ok) {
-      return NextResponse.json({ error: "Image not found in storage" }, { status: 404 });
-    }
-
-    const blob = await response.blob();
-    return new NextResponse(blob, {
+    const { buffer, contentType } = await getObjectBuffer(imageUrl);
+    return new NextResponse(new Uint8Array(buffer), {
       headers: {
-        "Content-Type": response.headers.get("Content-Type") || "image/png",
-        "Cache-Control": "public, max-age=86400",
+        "Content-Type": contentType || "image/png",
+        "Cache-Control": "private, max-age=300",
       },
     });
   } catch (err) {

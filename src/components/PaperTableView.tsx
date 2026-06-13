@@ -6,6 +6,7 @@ import Link from "next/link";
 interface PaperPost {
   id: string;
   postType: string;
+  imageUrl?: string | null;
   finalImageUrl: string | null;
   uploadedPhotoUrl: string | null;
   stampCount: number;
@@ -202,7 +203,7 @@ export function PaperTableView({ posts, onStamp, isStamping, onLoadMore, hasMore
       {pickedUp && (() => {
         const post = posts.find(p => p.id === pickedUp);
         if (!post) return null;
-        const imageUrl = post.finalImageUrl || post.uploadedPhotoUrl;
+        const imageUrl = post.imageUrl || post.finalImageUrl || post.uploadedPhotoUrl;
         return (
           <div className="pt-picked-overlay" onClick={() => setPickedUp(null)}>
             <div className="pt-picked-card" onClick={(e) => e.stopPropagation()}>
@@ -237,7 +238,7 @@ export function PaperTableView({ posts, onStamp, isStamping, onLoadMore, hasMore
           const x = dragPos?.x ?? layout.x;
           const y = dragPos?.y ?? layout.y;
           const rotation = paperRotations[post.id] ?? layout.rotation;
-          const imageUrl = post.finalImageUrl || post.uploadedPhotoUrl;
+          const imageUrl = post.imageUrl || post.finalImageUrl || post.uploadedPhotoUrl;
           const isDragging = dragging.current && draggingPaper.current === post.id;
           return (
             <div

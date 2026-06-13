@@ -5,6 +5,7 @@ import { uploadBuffer } from "@/lib/storage";
 import { renderCommentToPng, type StrokePoint } from "@/lib/image";
 import { validateCommentStrokes } from "@/lib/validation";
 import { rateLimit } from "@/lib/rate-limit";
+import { serializeGuestbookEntries, serializeGuestbookEntry } from "@/lib/post-dto";
 
 // Guestbook entries are the same medium as postscripts (handwritten strips),
 // so both endpoints speak the same { comments } shape and share the UI.
@@ -26,8 +27,13 @@ export async function GET(
     orderBy: { createdAt: "asc" },
   });
 
+  const comments = entries.map(({ author, ...entry }) => ({
+    ...entry,
+    user: author,
+  }));
+
   return NextResponse.json({
-    comments: entries.map(({ author, ...e }) => ({ ...e, user: author })),
+    comments: serializeGuestbookEntries(comments),
   });
 }
 
@@ -96,5 +102,8 @@ export async function POST(
   });
 
   const { author, ...rest } = entry;
-  return NextResponse.json({ comment: { ...rest, user: author } }, { status: 201 });
+  return NextResponse.json(
+    { comment: serializeGuestbookEntry({ ...rest, user: author }) },
+    { status: 201 }
+  );
 }

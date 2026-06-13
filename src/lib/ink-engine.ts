@@ -19,16 +19,26 @@ export type InkId =
   | "runny"
   | "quill"
   | "calligraphy"
+  | "italic"
+  | "blackletter"
   | "copperplate"
-  | "brush";
+  | "brush"
+  | "watercolor"
+  | "goldLeaf"
+  | "illumination";
 
 export const INK_STYLES: ReadonlyArray<{ id: InkId; name: string; desc: string }> = [
   { id: "standard", name: "Standard", desc: "round nib" },
   { id: "runny", name: "Runny", desc: "wet & splattery" },
   { id: "quill", name: "Quill", desc: "scratchy nib" },
   { id: "calligraphy", name: "Callig.", desc: "broad-edge nib, held at 45°" },
+  { id: "italic", name: "Italic", desc: "crisp chisel nib" },
+  { id: "blackletter", name: "Blackletter", desc: "heavy gothic broad-edge nib" },
   { id: "copperplate", name: "Copperplate", desc: "pointed-nib, pressure-driven" },
   { id: "brush", name: "Brush", desc: "wide calligraphy brush" },
+  { id: "watercolor", name: "Watercolor", desc: "soft translucent wash" },
+  { id: "goldLeaf", name: "Gold Leaf", desc: "metallic gilding strokes" },
+  { id: "illumination", name: "Illumine", desc: "ornamental color with a gilded edge" },
 ];
 
 // Reference canvas width: stroke widths below are tuned for a 2400px page.
@@ -39,11 +49,13 @@ export const REFERENCE_WIDTH = 2400;
 // A broad-edge nib held at the classic 45° italic angle. The stroke is the
 // ribbon swept by the nib edge: full width moving across the nib, a hairline
 // moving along it. This is what makes calligraphy calligraphy.
-const NIB_ANGLE = -Math.PI / 4;
-const NIB_COS = Math.cos(NIB_ANGLE);
-const NIB_SIN = Math.sin(NIB_ANGLE);
+const CALLIGRAPHY_ANGLE = -Math.PI / 4;
+const ITALIC_ANGLE = -Math.PI / 7;
+const BLACKLETTER_ANGLE = -Math.PI / 2.7;
 
-let _seed = 42;
+export const DEFAULT_INK_SEED = 42;
+
+let _seed = DEFAULT_INK_SEED;
 function ri(): number {
   _seed = (_seed * 16807 + 0) % 2147483647;
   return (_seed & 0x7fffffff) / 0x7fffffff;
@@ -52,8 +64,16 @@ export function reseed(seed: number) {
   _seed = Math.max(1, Math.floor(seed)) % 2147483647;
 }
 
-function nibHalfWidth(pressure: number, scale: number): number {
-  return Math.max(3, (11 + pressure * 14)) * scale * 0.5;
+function nibHalfWidth(pressure: number, scale: number, ink: string): number {
+  const base = ink === "blackletter" ? 18 : ink === "italic" ? 14 : 11;
+  const swell = ink === "blackletter" ? 20 : ink === "italic" ? 12 : 14;
+  return Math.max(3, (base + pressure * swell)) * scale * 0.5;
+}
+
+function nibAngle(ink: string): number {
+  if (ink === "italic") return ITALIC_ANGLE;
+  if (ink === "blackletter") return BLACKLETTER_ANGLE;
+  return CALLIGRAPHY_ANGLE;
 }
 
 // Fill the parallelogram swept by the nib edge moving from (x1,y1) to (x2,y2)
@@ -61,13 +81,17 @@ function fillNibRibbon(
   ctx: any,
   x1: number, y1: number, x2: number, y2: number,
   h1: number, h2: number,
-  color: string, alpha: number
+  color: string, alpha: number,
+  angle: number
 ) {
+  const nibCos = Math.cos(angle);
+  const nibSin = Math.sin(angle);
+
   ctx.beginPath();
-  ctx.moveTo(x1 + NIB_COS * h1, y1 + NIB_SIN * h1);
-  ctx.lineTo(x2 + NIB_COS * h2, y2 + NIB_SIN * h2);
-  ctx.lineTo(x2 - NIB_COS * h2, y2 - NIB_SIN * h2);
-  ctx.lineTo(x1 - NIB_COS * h1, y1 - NIB_SIN * h1);
+  ctx.moveTo(x1 + nibCos * h1, y1 + nibSin * h1);
+  ctx.lineTo(x2 + nibCos * h2, y2 + nibSin * h2);
+  ctx.lineTo(x2 - nibCos * h2, y2 - nibSin * h2);
+  ctx.lineTo(x1 - nibCos * h1, y1 - nibSin * h1);
   ctx.closePath();
   ctx.fillStyle = color;
   ctx.globalAlpha = alpha;
@@ -84,6 +108,66 @@ function fillNibRibbon(
   ctx.globalAlpha = 1;
 }
 
+function renderGoldLeafSegment(
+  ctx: any,
+  x1: number, y1: number, x2: number, y2: number,
+  p1: number, p2: number,
+  color: string,
+  scale: number
+) {
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const w = Math.max(4, ((p1 + p2) / 2) * 22) * scale;
+
+  ctx.save?.();
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+
+  ctx.strokeStyle = "#6d4b10";
+  ctx.globalAlpha = 0.42;
+  ctx.lineWidth = w * 1.18;
+  ctx.beginPath();
+  ctx.moveTo(x1, y1);
+  ctx.lineTo(x2, y2);
+  ctx.stroke();
+
+  ctx.strokeStyle = color || "#d4af37";
+  ctx.globalAlpha = 0.88;
+  ctx.lineWidth = w;
+  ctx.beginPath();
+  ctx.moveTo(x1, y1);
+  ctx.lineTo(x2, y2);
+  ctx.stroke();
+
+  ctx.strokeStyle = "#fff4ad";
+  ctx.globalAlpha = 0.48;
+  ctx.lineWidth = Math.max(1, w * 0.24);
+  ctx.beginPath();
+  ctx.moveTo(x1 - dy * 0.018, y1 + dx * 0.018);
+  ctx.lineTo(x2 - dy * 0.018, y2 + dx * 0.018);
+  ctx.stroke();
+
+  for (let i = 0; i < 3; i++) {
+    if (ri() > 0.35) {
+      const t = ri();
+      ctx.beginPath();
+      ctx.arc(
+        x1 + dx * t + (ri() - 0.5) * w,
+        y1 + dy * t + (ri() - 0.5) * w,
+        Math.max(0.7, w * (0.05 + ri() * 0.13)),
+        0,
+        Math.PI * 2
+      );
+      ctx.fillStyle = ri() > 0.45 ? "#fff7c8" : "#9b6f17";
+      ctx.globalAlpha = 0.3 + ri() * 0.35;
+      ctx.fill();
+    }
+  }
+
+  ctx.globalAlpha = 1;
+  ctx.restore?.();
+}
+
 export function renderSegment(
   ctx: any,
   ink: string,
@@ -97,23 +181,30 @@ export function renderSegment(
   const dist = Math.sqrt(dx * dx + dy * dy);
   const speed = dist;
 
-  if (ink === "calligraphy") {
-    const h1 = nibHalfWidth(p1, scale);
-    const h2 = nibHalfWidth(p2, scale);
-    fillNibRibbon(ctx, x1, y1, x2, y2, h1, h2, color, 0.82 + ri() * 0.12);
+  if (ink === "calligraphy" || ink === "italic" || ink === "blackletter") {
+    const h1 = nibHalfWidth(p1, scale, ink);
+    const h2 = nibHalfWidth(p2, scale, ink);
+    const angle = nibAngle(ink);
+    const opacity = ink === "blackletter" ? 0.9 + ri() * 0.08 : 0.82 + ri() * 0.12;
+    fillNibRibbon(ctx, x1, y1, x2, y2, h1, h2, color, opacity, angle);
 
     // Wet ink pools where the nib lingers
-    if (speed < 14 * scale && ri() > 0.55) {
+    if (ink !== "italic" && speed < 14 * scale && ri() > 0.55) {
       ctx.beginPath();
       ctx.ellipse(
         (x1 + x2) / 2, (y1 + y2) / 2,
-        h2 * 0.9, h2 * 0.55, NIB_ANGLE, 0, Math.PI * 2
+        h2 * 0.9, h2 * 0.55, angle, 0, Math.PI * 2
       );
       ctx.fillStyle = color;
       ctx.globalAlpha = 0.25 + ri() * 0.2;
       ctx.fill();
       ctx.globalAlpha = 1;
     }
+    return;
+  }
+
+  if (ink === "goldLeaf") {
+    renderGoldLeafSegment(ctx, x1, y1, x2, y2, p1, p2, color, scale);
     return;
   }
 
@@ -134,6 +225,12 @@ export function renderSegment(
     const speedFactor = Math.max(0.4, Math.min(1.2, (200 * scale) / (speed + 8 * scale)));
     baseW = Math.max(1.5, ((p1 + p2) / 2) * 22 * speedFactor) * scale;
     alpha = 0.65 + ((p1 + p2) / 2) * 0.3;
+  } else if (ink === "watercolor") {
+    baseW = Math.max(8, ((p1 + p2) / 2) * 34) * scale;
+    alpha = 0.12 + ((p1 + p2) / 2) * 0.16;
+  } else if (ink === "illumination") {
+    baseW = Math.max(9, ((p1 + p2) / 2) * 28) * scale;
+    alpha = 0.72;
   } else {
     baseW = Math.max(2, ((p1 + p2) / 2) * 9) * scale;
     alpha = 1;
@@ -145,12 +242,36 @@ export function renderSegment(
   for (let i = 0; i <= steps; i++) {
     const t = i / steps;
     ctx.beginPath();
-    ctx.arc(x1 + dx * t, y1 + dy * t, baseW * 0.5, 0, Math.PI * 2);
+    const jitter = ink === "watercolor" ? baseW * 0.18 : 0;
+    const radius = ink === "watercolor" ? baseW * (0.38 + ri() * 0.2) : baseW * 0.5;
+    ctx.arc(
+      x1 + dx * t + (ri() - 0.5) * jitter,
+      y1 + dy * t + (ri() - 0.5) * jitter,
+      radius,
+      0,
+      Math.PI * 2
+    );
     ctx.fillStyle = color;
     ctx.globalAlpha = alpha;
     ctx.fill();
   }
   ctx.globalAlpha = 1;
+
+  if (ink === "illumination") {
+    renderGoldLeafSegment(ctx, x1, y1, x2, y2, p1 * 0.42, p2 * 0.42, "#d4af37", scale);
+  }
+
+  if (ink === "watercolor") {
+    ctx.globalAlpha = 0.08;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = Math.max(1, baseW * 0.16);
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x2, y2);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
 
   // Runny ink splatter
   if (ink === "runny") {
@@ -220,12 +341,12 @@ export function drawDot(
     ctx.globalAlpha = 0.8;
     ctx.fill();
     ctx.globalAlpha = 1;
-  } else if (ink === "calligraphy") {
+  } else if (ink === "calligraphy" || ink === "italic" || ink === "blackletter") {
     // The footprint of the resting nib: a thin bar at the nib angle
-    const h = nibHalfWidth(pressure, scale);
+    const h = nibHalfWidth(pressure, scale, ink);
     ctx.save();
     ctx.translate(px, py);
-    ctx.rotate(NIB_ANGLE);
+    ctx.rotate(nibAngle(ink));
     ctx.beginPath();
     ctx.ellipse(0, 0, h, Math.max(1, h * 0.18), 0, 0, Math.PI * 2);
     ctx.fillStyle = color;
@@ -247,6 +368,23 @@ export function drawDot(
     ctx.globalAlpha = 0.7 + pressure * 0.25;
     ctx.fill();
     ctx.globalAlpha = 1;
+  } else if (ink === "watercolor") {
+    ctx.beginPath();
+    ctx.arc(px, py, Math.max(5, pressure * 22) * scale, 0, Math.PI * 2);
+    ctx.fillStyle = color;
+    ctx.globalAlpha = 0.22;
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  } else if (ink === "goldLeaf") {
+    renderGoldLeafSegment(ctx, px - 0.01, py, px + 0.01, py, pressure, pressure, color, scale);
+  } else if (ink === "illumination") {
+    ctx.beginPath();
+    ctx.arc(px, py, Math.max(4, pressure * 16) * scale, 0, Math.PI * 2);
+    ctx.fillStyle = color;
+    ctx.globalAlpha = 0.72;
+    ctx.fill();
+    ctx.globalAlpha = 1;
+    renderGoldLeafSegment(ctx, px - 0.01, py, px + 0.01, py, pressure * 0.4, pressure * 0.4, "#d4af37", scale);
   } else {
     ctx.beginPath();
     ctx.arc(px, py, Math.max(1.2, pressure * 7) * scale, 0, Math.PI * 2);

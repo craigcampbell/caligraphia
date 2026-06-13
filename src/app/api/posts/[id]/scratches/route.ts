@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { canViewPost } from "@/lib/post-access";
+import { serializeScratches } from "@/lib/post-dto";
 
 export async function GET(
   _request: Request,
@@ -12,7 +14,7 @@ export async function GET(
   }
 
   const post = await prisma.post.findUnique({ where: { id: params.id } });
-  if (!post || post.deletedAt) {
+  if (!canViewPost(post, session.userId)) {
     return NextResponse.json({ error: "Post not found" }, { status: 404 });
   }
 
@@ -24,5 +26,5 @@ export async function GET(
     orderBy: { createdAt: "asc" },
   });
 
-  return NextResponse.json({ scratches });
+  return NextResponse.json({ scratches: serializeScratches(scratches) });
 }

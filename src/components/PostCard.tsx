@@ -7,6 +7,7 @@ interface PostCardProps {
   post: {
     id: string;
     postType: string;
+    imageUrl?: string | null;
     finalImageUrl: string | null;
     uploadedPhotoUrl: string | null;
     ocrHashtags: string[];
@@ -24,7 +25,7 @@ interface PostCardProps {
 }
 
 export function PostCard({ post }: PostCardProps) {
-  const imageUrl = post.finalImageUrl || post.uploadedPhotoUrl;
+  const imageUrl = post.imageUrl || post.finalImageUrl || post.uploadedPhotoUrl;
   const stampCount = post.stampCount ?? 0;
 
   return (

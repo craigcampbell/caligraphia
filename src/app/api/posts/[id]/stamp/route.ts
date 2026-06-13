@@ -3,6 +3,7 @@ import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { rateLimitInteraction } from "@/lib/rate-limit";
 import { ensureDailyStamps } from "@/lib/stamps";
+import { canViewPost } from "@/lib/post-access";
 
 export async function POST(
   request: Request,
@@ -25,10 +26,9 @@ export async function POST(
 
   const post = await prisma.post.findUnique({
     where: { id },
-    select: { id: true, deletedAt: true },
   });
 
-  if (!post || post.deletedAt) {
+  if (!canViewPost(post, session.userId)) {
     return NextResponse.json({ error: "Post not found" }, { status: 404 });
   }
 

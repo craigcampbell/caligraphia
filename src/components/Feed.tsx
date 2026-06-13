@@ -174,7 +174,7 @@ export function Feed({
 
 // Gallery card
 function GalleryCard({ post, onStamp, isStamping }: { post: any; onStamp?: (id: string) => void; isStamping?: boolean }) {
-  const imageUrl = post.finalImageUrl || post.uploadedPhotoUrl;
+  const imageUrl = post.imageUrl || post.finalImageUrl || post.uploadedPhotoUrl;
   const timeAgo = (date: string) => {
     const diff = Date.now() - new Date(date).getTime();
     const mins = Math.floor(diff / 60000);
