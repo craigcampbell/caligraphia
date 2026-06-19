@@ -1,5 +1,5 @@
-// The single ink engine, shared by the live drawing canvas, the replay
-// viewer, and the server-side PNG renderer. Works against any 2D context
+// The single ink engine, shared by the live drawing canvas and the
+// server-side PNG renderer. Works against any 2D context
 // (DOM CanvasRenderingContext2D or @napi-rs/canvas), so keep it free of
 // browser- and node-only APIs.
 

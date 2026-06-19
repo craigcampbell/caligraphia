@@ -6,7 +6,6 @@ import { AuthGuard } from "@/components/AuthGuard";
 import { NavBar } from "@/components/NavBar";
 import { StampButton } from "@/components/StampButton";
 import { ScratchOverlay } from "@/components/ScratchOverlay";
-import { DrawingReplay } from "@/components/DrawingReplay";
 import { Postscripts } from "@/components/Postscripts";
 import { useAuth } from "@/hooks/useAuth";
 import Link from "next/link";
@@ -17,7 +16,6 @@ export default function PostDetailPage() {
   const [post, setPost] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [scratchMode, setScratchMode] = useState(false);
-  const [replayMode, setReplayMode] = useState(false);
   const [scratches, setScratches] = useState<any[]>([]);
 
   useEffect(() => {
@@ -95,7 +93,6 @@ export default function PostDetailPage() {
     post.imageUrl ||
     post.finalImageUrl ||
     post.uploadedPhotoUrl;
-  const canReplay = Array.isArray(post.canvasStrokeData);
 
   const isOwner = user?.id === post.user.id;
 
@@ -125,14 +122,6 @@ export default function PostDetailPage() {
             >
               Scratch
             </button>
-            {canReplay && (
-              <button
-                onClick={() => setReplayMode(true)}
-                className="btn-replay"
-              >
-                &#9654; Watch me write
-              </button>
-            )}
             {isOwner && (
               <button onClick={handleDelete} className="btn-delete">
                 Delete
@@ -188,14 +177,6 @@ export default function PostDetailPage() {
         />
       )}
 
-      {replayMode && canReplay && (
-        <DrawingReplay
-          strokes={post.canvasStrokeData}
-          paper={post.paperType || "ruled"}
-          inkStyle={post.inkStyle || "standard"}
-          onClose={() => setReplayMode(false)}
-        />
-      )}
 
       <style>{`
         .detail-main {
@@ -254,23 +235,6 @@ export default function PostDetailPage() {
         }
         .btn-scratch:hover {
           background: #fff5f5;
-        }
-        .btn-replay {
-          padding: 8px 16px;
-          border: 1px solid #2471a3;
-          border-radius: 8px;
-          background: #fff;
-          color: #2471a3;
-          cursor: pointer;
-          font-weight: 600;
-          font-family: inherit;
-          font-size: 14px;
-          display: flex;
-          align-items: center;
-          gap: 4px;
-        }
-        .btn-replay:hover {
-          background: #f0f8ff;
         }
         .btn-delete {
           padding: 8px 16px;
