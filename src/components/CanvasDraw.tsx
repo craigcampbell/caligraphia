@@ -130,6 +130,9 @@ export function CanvasDraw({
   // Brush-size multiplier applied to whatever pen is selected (and the eraser).
   const [brushSize, setBrushSize] = useState(1);
   const [hint, setHint] = useState("");
+  // The palette sheet holds colors, size, pen styles, paper and extras so the
+  // always-visible toolbar can stay a single slim row.
+  const [paletteOpen, setPaletteOpen] = useState(false);
 
   // Zoom & pan. The paper fills the frame width at zoom 1 (so it starts close,
   // like writing on a real sheet); zoom multiplies that, pan slides it around.
@@ -597,131 +600,131 @@ export function CanvasDraw({
 
   return (
     <div className="canvas-shell notranslate" translate="no">
-      <div className="canvas-topbar">
-        <div className="paper-chooser">
-          {PAPER_PRESETS.map((p) => (
-            <button key={p.id} className={`paper-chip ${paper === p.id ? "active" : ""}`} onClick={() => setPaper(p.id)} style={{ background: p.bg }}>
-              {p.name}
-            </button>
-          ))}
-        </div>
-
-        <div className="ink-style-chooser">
-          {INK_STYLES.map((s) => (
-            <button key={s.id} className={`ink-chip ${inkStyle === s.id ? "active" : ""}`} onClick={() => setInkStyle(s.id)} title={s.desc}>
-              {s.name}
-            </button>
-          ))}
-        </div>
-
-        <div className="ink-palette">
-          {INK_COLORS.map((c) => (
-            <button key={c} className={`ink-swatch ${selectedColor === c ? "active" : ""}`} onClick={() => setSelectedColor(c)} style={{ background: c }} aria-label={c} />
-          ))}
-          <label className="custom-color" title="Choose custom ink color">
-            <input
-              type="color"
-              value={selectedColor}
-              onChange={(e) => setSelectedColor(e.currentTarget.value.toLowerCase())}
-              aria-label="Choose custom ink color"
-            />
-          </label>
-        </div>
-
-        <div className="tool-group">
-          <div className="pen-eraser">
-            <button
-              className={`tool-btn ${tool === "pen" ? "active" : ""}`}
-              onClick={() => setTool("pen")}
-              title="Pen"
-            >
-              Pen
-            </button>
-            <button
-              className={`tool-btn ${tool === "eraser" ? "active" : ""}`}
-              onClick={() => setTool("eraser")}
-              title="Eraser — drag over a stroke to lift it off"
-            >
-              Eraser
-            </button>
-            <button
-              className={`tool-btn ${tool === "hand" ? "active" : ""}`}
-              onClick={() => setTool("hand")}
-              title="Hand — drag to move the page around"
-            >
-              ✋ Pan
-            </button>
-          </div>
-          <label className="size-control" title="Brush / eraser size">
-            <span className="size-caption">Size</span>
-            <input
-              type="range"
-              min={0.4}
-              max={3}
-              step={0.1}
-              value={brushSize}
-              onChange={(e) => setBrushSize(parseFloat(e.currentTarget.value))}
-              className="size-range"
-              aria-label="Brush size"
-            />
-            <span
-              className="size-dot"
-              style={{ width: 5 + brushSize * 7, height: 5 + brushSize * 7 }}
-            />
-          </label>
-        </div>
-
-        <div className="canvas-status">
-          {/* Sound toggle */}
-          <button
-            className={`sound-toggle ${soundOn ? "on" : ""}`}
-            onClick={() => {
-              if (soundOn) { setSoundOn(false); disable(); }
-              else { setSoundOn(true); enable(); startScratch(); setTimeout(() => stopScratch(), 50); }
-            }}
-            title={soundOn ? "Pen sounds on" : "Pen sounds off"}
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              {soundOn ? (
-                <>
-                  <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
-                  <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
-                  <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
-                </>
-              ) : (
-                <>
-                  <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
-                  <line x1="22" y1="9" x2="17" y2="15" />
-                  <line x1="17" y1="9" x2="22" y2="15" />
-                </>
-              )}
-            </svg>
+      <div className="canvas-toolbar">
+        <div className="tool-seg">
+          <button className={`seg-btn ${tool === "pen" ? "active" : ""}`} onClick={() => setTool("pen")} title="Pen" aria-label="Pen">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 21l3.5-1L20 6.5 17.5 4 4 17.5z"/><path d="M14.5 6.5l3 3"/></svg>
           </button>
-          {/* Drop ink splatter */}
-          <button
-            className="ink-splatter-btn"
-            onClick={dropInkSplatter}
-            title="Drop an ink splatter"
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M12 2.5c-3 4-7 7.5-7 11.5a7 7 0 0 0 14 0c0-4-4-7.5-7-11.5z"/>
-              <circle cx="12" cy="14" r="1.5" fill="currentColor"/>
-            </svg>
+          <button className={`seg-btn ${tool === "eraser" ? "active" : ""}`} onClick={() => setTool("eraser")} title="Eraser — drag over a stroke to lift it off" aria-label="Eraser">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 16l6 6h9M16 3l5 5L10 19l-6-6z"/></svg>
           </button>
-          {/* Ink level — visual only, no numbers */}
-          <div className="ink-level-wrap" title={canSubmit ? "Ready to send" : "Ink still flowing..."}>
-            <div className="ink-bottle">
-              <svg width="18" height="24" viewBox="0 0 18 24" className="ink-icon">
-                <rect x="3" y="2" width="12" height="20" rx="2" fill="none" stroke="#8c7a60" strokeWidth="1.2" opacity="0.5"/>
-                <rect x="6" y="0" width="6" height="3" rx="1" fill="none" stroke="#8c7a60" strokeWidth="1" opacity="0.4"/>
-                <rect x="4" y={4 + (1 - Math.min(elapsed / minDrawTimeMs, 1)) * 16} width="10" height={Math.min(elapsed / minDrawTimeMs, 1) * 16}
-                  rx="1" fill={canSubmit ? "#27ae60" : selectedColor} opacity={canSubmit ? 0.8 : 0.6}/>
-              </svg>
-            </div>
-            <span className={`ink-hint ${canSubmit ? "ready" : ""}`}>{hint || "Start writing..."}</span>
-          </div>
+          <button className={`seg-btn ${tool === "hand" ? "active" : ""}`} onClick={() => setTool("hand")} title="Pan — drag to move the page" aria-label="Pan">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M8 13V6a1.5 1.5 0 0 1 3 0v5m0-1a1.5 1.5 0 0 1 3 0v1m0 0a1.5 1.5 0 0 1 3 0v4a5 5 0 0 1-5 5h-1a6 6 0 0 1-5-3l-2.5-4s-.4-1 .6-1.6 1.9.6 1.9.6L8 14"/></svg>
+          </button>
         </div>
+
+        <button className="swatch-btn" onClick={() => setPaletteOpen(true)} title="Colour, pens & paper" aria-label="Open palette" style={{ background: selectedColor }} />
+
+        <button className="pen-name-btn" onClick={() => setPaletteOpen(true)} title="Choose pen">
+          {INK_STYLES.find((s) => s.id === inkStyle)?.name || "Pen"}
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M6 9l6 6 6-6"/></svg>
+        </button>
+
+        <div className="toolbar-spacer" />
+
+        <div className="ink-level-wrap" title={canSubmit ? "Ready to send" : (hint || "Ink still flowing...")}>
+          <svg width="16" height="22" viewBox="0 0 18 24" className="ink-icon" aria-hidden="true">
+            <rect x="3" y="2" width="12" height="20" rx="2" fill="none" stroke="#8c7a60" strokeWidth="1.2" opacity="0.5"/>
+            <rect x="6" y="0" width="6" height="3" rx="1" fill="none" stroke="#8c7a60" strokeWidth="1" opacity="0.4"/>
+            <rect x="4" y={4 + (1 - Math.min(elapsed / minDrawTimeMs, 1)) * 16} width="10" height={Math.min(elapsed / minDrawTimeMs, 1) * 16}
+              rx="1" fill={canSubmit ? "#27ae60" : selectedColor} opacity={canSubmit ? 0.8 : 0.6}/>
+          </svg>
+        </div>
+
+        <button className="more-btn" onClick={() => setPaletteOpen(true)} title="Palette — colours, size, pens, paper" aria-label="Open palette">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>
+        </button>
       </div>
+
+      {paletteOpen && (
+        <div className="palette-backdrop" onClick={() => setPaletteOpen(false)}>
+          <div className="palette-sheet" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Drawing palette">
+            <div className="palette-head">
+              <span className="palette-title">Palette</span>
+              <button className="palette-close" onClick={() => setPaletteOpen(false)} aria-label="Close palette">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+              </button>
+            </div>
+
+            <div className="palette-section">
+              <span className="palette-label">Colour</span>
+              <div className="ink-palette">
+                {INK_COLORS.map((c) => (
+                  <button key={c} className={`ink-swatch ${selectedColor === c ? "active" : ""}`} onClick={() => setSelectedColor(c)} style={{ background: c }} aria-label={c} />
+                ))}
+                <label className="custom-color" title="Choose custom ink color">
+                  <input type="color" value={selectedColor} onChange={(e) => setSelectedColor(e.currentTarget.value.toLowerCase())} aria-label="Choose custom ink color" />
+                </label>
+              </div>
+            </div>
+
+            <div className="palette-section">
+              <span className="palette-label">Size</span>
+              <label className="size-control" title="Brush / eraser size">
+                <input type="range" min={0.4} max={3} step={0.1} value={brushSize} onChange={(e) => setBrushSize(parseFloat(e.currentTarget.value))} className="size-range" aria-label="Brush size" />
+                <span className="size-dot" style={{ width: 6 + brushSize * 9, height: 6 + brushSize * 9 }} />
+              </label>
+            </div>
+
+            <div className="palette-section">
+              <span className="palette-label">Pen</span>
+              <div className="ink-style-chooser">
+                {INK_STYLES.map((s) => (
+                  <button key={s.id} className={`ink-chip ${inkStyle === s.id ? "active" : ""}`} onClick={() => setInkStyle(s.id)} title={s.desc}>{s.name}</button>
+                ))}
+              </div>
+            </div>
+
+            <div className="palette-section">
+              <span className="palette-label">Paper</span>
+              <div className="paper-chooser">
+                {PAPER_PRESETS.map((p) => (
+                  <button key={p.id} className={`paper-chip ${paper === p.id ? "active" : ""}`} onClick={() => setPaper(p.id)} style={{ background: p.bg }}>{p.name}</button>
+                ))}
+              </div>
+            </div>
+
+            <div className="palette-section">
+              <span className="palette-label">Extras</span>
+              <div className="extras-row">
+                <button
+                  className={`sound-toggle ${soundOn ? "on" : ""}`}
+                  onClick={() => {
+                    if (soundOn) { setSoundOn(false); disable(); }
+                    else { setSoundOn(true); enable(); startScratch(); setTimeout(() => stopScratch(), 50); }
+                  }}
+                  title={soundOn ? "Pen sounds on" : "Pen sounds off"}
+                  aria-label="Toggle pen sounds"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    {soundOn ? (
+                      <>
+                        <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+                        <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
+                        <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
+                      </>
+                    ) : (
+                      <>
+                        <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+                        <line x1="22" y1="9" x2="17" y2="15" />
+                        <line x1="17" y1="9" x2="22" y2="15" />
+                      </>
+                    )}
+                  </svg>
+                </button>
+                <span className="extras-label">Pen sounds</span>
+                <button className="ink-splatter-btn" onClick={dropInkSplatter} title="Drop an ink splatter" aria-label="Drop an ink splatter">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M12 2.5c-3 4-7 7.5-7 11.5a7 7 0 0 0 14 0c0-4-4-7.5-7-11.5z"/>
+                    <circle cx="12" cy="14" r="1.5" fill="currentColor"/>
+                  </svg>
+                </button>
+                <span className="extras-label">Ink splatter</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="canvas-viewport" ref={viewportRef}>
         <canvas ref={canvasRef} className="draw-canvas notranslate" translate="no"
@@ -757,6 +760,68 @@ export function CanvasDraw({
           user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
         }
         .canvas-topbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; width: 100%; }
+
+        /* Slim always-visible toolbar */
+        .canvas-toolbar { display: flex; align-items: center; gap: 8px; width: 100%; padding: 4px 0; }
+        .tool-seg { display: flex; border: 1px solid #d0c8b8; border-radius: 10px; overflow: hidden; background: #fefdf9; flex-shrink: 0; }
+        .seg-btn {
+          display: flex; align-items: center; justify-content: center;
+          width: 40px; height: 36px; border: none; background: none; cursor: pointer;
+          color: #8c7a60; padding: 0; border-left: 1px solid #ece4d4;
+        }
+        .seg-btn:first-child { border-left: none; }
+        .seg-btn:hover { color: #5c4a30; background: rgba(0,0,0,0.03); }
+        .seg-btn.active { background: #ede0cc; color: #5c4a30; }
+        .swatch-btn {
+          width: 32px; height: 32px; border-radius: 50%; border: 2px solid #fff;
+          box-shadow: 0 0 0 1.5px #c8bfa8; cursor: pointer; padding: 0; flex-shrink: 0;
+        }
+        .swatch-btn:hover { box-shadow: 0 0 0 1.5px #8b4513; }
+        .pen-name-btn {
+          display: flex; align-items: center; gap: 5px; height: 36px; padding: 0 12px;
+          border: 1px solid #d0c8b8; border-radius: 10px; background: #fefdf9; cursor: pointer;
+          font-size: 13px; font-weight: 600; color: #5c4a30; font-family: inherit; white-space: nowrap;
+        }
+        .pen-name-btn:hover { border-color: #8b4513; }
+        .toolbar-spacer { flex: 1; }
+        .more-btn {
+          display: flex; align-items: center; justify-content: center;
+          width: 38px; height: 36px; border: 1px solid #d0c8b8; border-radius: 10px;
+          background: #fefdf9; cursor: pointer; color: #5c4a30; padding: 0; flex-shrink: 0;
+        }
+        .more-btn:hover { border-color: #8b4513; }
+
+        /* Palette sheet (bottom sheet) */
+        .palette-backdrop {
+          position: fixed; inset: 0; background: rgba(40,30,20,0.28); z-index: 400;
+          display: flex; align-items: flex-end; justify-content: center;
+        }
+        .palette-sheet {
+          width: 100%; max-width: 720px; max-height: 82vh; overflow-y: auto;
+          background: #fdfbf5; border: 1px solid #e0d5c0; border-bottom: none;
+          border-radius: 16px 16px 0 0; padding: 0 18px 28px;
+          box-shadow: 0 -10px 40px rgba(60,40,20,0.18);
+        }
+        .palette-head {
+          display: flex; align-items: center; justify-content: space-between;
+          position: sticky; top: 0; background: #fdfbf5; padding: 12px 0 8px; z-index: 1;
+        }
+        .palette-title { font-size: 15px; font-weight: 700; color: #2c2416; }
+        .palette-close {
+          display: flex; align-items: center; justify-content: center;
+          width: 34px; height: 34px; border: none; background: none; cursor: pointer;
+          color: #8c7a60; border-radius: 8px;
+        }
+        .palette-close:hover { background: rgba(0,0,0,0.05); color: #2c2416; }
+        .palette-section { padding: 11px 0; border-top: 1px solid #f0e8d8; }
+        .palette-section:first-of-type { border-top: none; }
+        .palette-label { display: block; font-size: 12px; font-weight: 600; color: #8c7a60; margin-bottom: 10px; }
+        .palette-section .ink-swatch { width: 30px; height: 30px; }
+        .palette-section .custom-color { width: 32px; height: 32px; }
+        .palette-section .size-control { width: 100%; }
+        .palette-section .size-range { flex: 1; width: auto; }
+        .extras-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+        .extras-label { font-size: 13px; color: #6b5c40; margin-right: 10px; }
         .tool-group { display: flex; align-items: center; gap: 12px; }
         .pen-eraser { display: flex; gap: 4px; }
         .tool-btn {
