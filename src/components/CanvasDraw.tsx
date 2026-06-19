@@ -873,6 +873,21 @@ export function CanvasDraw({
         .btn-submit.disabled { background: #e0ddd5; color: #999; cursor: not-allowed; }
         .btn-submit.ready { background: #1a1a1a; color: #fff; box-shadow: 0 4px 16px rgba(0,0,0,0.18); }
         .btn-submit.ready:hover { transform: translateY(-1px); box-shadow: 0 6px 24px rgba(0,0,0,0.18); }
+
+        /* Phones: tighten the toolbar so the paper gets the room, and make the
+           action buttons easy thumb targets. */
+        @media (max-width: 640px) {
+          .canvas-topbar { gap: 6px; }
+          .paper-chip, .ink-chip, .tool-btn { padding: 5px 9px; font-size: 11px; }
+          .ink-swatch { width: 22px; height: 22px; }
+          .canvas-status { margin-left: 0; width: 100%; justify-content: space-between; }
+          .ink-hint { display: none; }
+          .size-control { gap: 6px; }
+          .size-range { width: 72px; }
+          .canvas-viewport { height: 64vh; }
+          .canvas-actions { gap: 8px; width: 100%; padding-bottom: 24px; }
+          .btn-cancel, .btn-undo, .btn-submit { padding: 12px 10px; font-size: 14px; flex: 1; }
+        }
       `}</style>
     </div>
   );

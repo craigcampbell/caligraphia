@@ -10,6 +10,7 @@ export function NavBar() {
   const { user, logout } = useAuth();
   const router = useRouter();
   const [stampBalance, setStampBalance] = useState<number | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   useEffect(() => {
     if (user) {
@@ -34,7 +35,20 @@ export function NavBar() {
         </Link>
 
         {user && (
-          <div className="nav-links">
+          <button
+            className={`nav-toggle ${menuOpen ? "open" : ""}`}
+            onClick={() => setMenuOpen((o) => !o)}
+            aria-label={menuOpen ? "Close menu" : "Open menu"}
+            aria-expanded={menuOpen}
+          >
+            <span className="nav-toggle-bar" />
+            <span className="nav-toggle-bar" />
+            <span className="nav-toggle-bar" />
+          </button>
+        )}
+
+        {user && (
+          <div className={`nav-links ${menuOpen ? "open" : ""}`} onClick={() => setMenuOpen(false)}>
             <Link href="/post/new" className="nav-link nav-write-link">
               <PencilIcon size={14} />Pen a Letter
             </Link>
@@ -90,7 +104,9 @@ export function NavBar() {
           justify-content: space-between;
           gap: 16px;
           padding: 14px 20px;
+          position: relative;
         }
+        .nav-toggle { display: none; }
         .nav-brand {
           font-size: 22px;
           font-weight: 700;
@@ -160,6 +176,43 @@ export function NavBar() {
         .stamp-icon-nav { font-size: 14px; }
         .stamp-count-nav { font-weight: 700; }
         .nav-btn { font-family: inherit; }
+
+        /* Phones & small tablets: collapse the links behind a menu button so the
+           header stays a single slim bar. */
+        @media (max-width: 900px) {
+          .nav-inner { padding: 11px 16px; }
+          .nav-brand { font-size: 20px; }
+          .nav-toggle {
+            display: inline-flex; flex-direction: column; justify-content: center; gap: 4px;
+            width: 42px; height: 38px; padding: 0 10px; flex-shrink: 0;
+            border: 1px solid #e0d5c0; border-radius: 9px; background: #fffef9; cursor: pointer;
+          }
+          .nav-toggle-bar {
+            display: block; height: 2px; width: 100%; background: #5c4a30;
+            border-radius: 2px; transition: transform 0.2s, opacity 0.2s;
+          }
+          .nav-toggle.open .nav-toggle-bar:nth-child(1) { transform: translateY(6px) rotate(45deg); }
+          .nav-toggle.open .nav-toggle-bar:nth-child(2) { opacity: 0; }
+          .nav-toggle.open .nav-toggle-bar:nth-child(3) { transform: translateY(-6px) rotate(-45deg); }
+
+          .nav-links {
+            display: none;
+            position: absolute; top: 100%; left: 0; right: 0;
+            flex-direction: column; align-items: stretch; justify-content: flex-start;
+            gap: 2px; padding: 8px;
+            background: #fefcf6; border-bottom: 1px solid #e0d5c0;
+            box-shadow: 0 14px 28px rgba(80,40,20,0.14);
+            max-height: calc(100vh - 60px); overflow-y: auto;
+          }
+          .nav-links.open { display: flex; }
+          .nav-link, .nav-btn {
+            width: 100%; justify-content: flex-start;
+            font-size: 15px; padding: 12px 14px; border-radius: 8px;
+          }
+          .nav-write-link { width: 100%; justify-content: flex-start; font-size: 15px; padding: 12px 14px; }
+          .nav-stamp-balance { align-self: flex-start; margin: 4px 0 4px 14px; }
+          .nav-user { border-top: 1px solid #efe6d4; margin-top: 4px; padding-top: 14px; }
+        }
       `}</style>
     </nav>
   );
