@@ -158,11 +158,13 @@ async function handleCanvasPost(body: Record<string, unknown>, session: { userId
       : await renderCanvasToPng(strokeData, paper, inkStyle);
 
   if (previewOnly) {
-    // For preview: save as a temp image, return URL but don't create DB record
-    const imageKey = `previews/${uuidv4()}.png`;
+    // Hand the rendered preview straight back as a data URL. The browser can't
+    // reach MinIO directly (it's internal-only behind the tunnel), so an internal
+    // storage URL renders as a broken image. The final send re-renders from the
+    // strokes anyway, so there's nothing worth storing here.
     const compressedBuffer = await sharp(pngBuffer).png({ quality: 80 }).toBuffer();
-    const imageUrl = await uploadBuffer(imageKey, compressedBuffer, "image/png");
-    return NextResponse.json({ imageUrl });
+    const dataUrl = `data:image/png;base64,${compressedBuffer.toString("base64")}`;
+    return NextResponse.json({ imageUrl: dataUrl });
   }
 
   // Full post: compress and store the final image

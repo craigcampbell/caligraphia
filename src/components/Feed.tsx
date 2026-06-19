@@ -99,7 +99,23 @@ export function Feed({
   };
 
   if (posts.length === 0 && !loading) {
-    return <div className="feed-empty-state">{emptyMessage}</div>;
+    // Self-contained styles: the .feed-empty-state CSS below lives inside the
+    // populated branch's <style>, which isn't mounted when the feed is empty.
+    return (
+      <div
+        style={{
+          textAlign: "center",
+          maxWidth: 600,
+          margin: "0 auto",
+          padding: "80px 20px",
+          color: "#999",
+          fontSize: 16,
+          fontStyle: "italic",
+        }}
+      >
+        {emptyMessage}
+      </div>
+    );
   }
 
   return (
