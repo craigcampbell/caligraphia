@@ -1,0 +1,90 @@
+# Local hosting behind a Cloudflare Tunnel.
+#
+# Runs the full stack (Next.js app + Postgres + MinIO) on this machine and
+# exposes it to the internet at https://caligraphia.com through Cloudflare —
+# no open ports, no Caddy, no public IP needed. TLS is terminated by Cloudflare.
+#
+#   docker compose -f docker-compose.tunnel.yml up -d --build
+#
+# See docs/deployment/local-tunnel.md for the one-time Cloudflare + Resend setup.
+
+services:
+  app:
+    build: .
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=${DATABASE_URL}
+      - JWT_SECRET=${JWT_SECRET}
+      - MAGIC_LINK_SECRET=${MAGIC_LINK_SECRET}
+      - BASE_URL=${BASE_URL}
+      - RESEND_API_KEY=${RESEND_API_KEY}
+      - EMAIL_FROM=${EMAIL_FROM}
+      - MINIO_ENDPOINT=storage
+      - MINIO_PORT=9000
+      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY}
+      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY}
+      - MINIO_BUCKET=${MINIO_BUCKET:-croquis}
+      # Images are proxied through the app, so MinIO is never reached directly
+      # by browsers — keep it internal-only and private.
+      - MINIO_PUBLIC_ENDPOINT=storage
+      - MINIO_PUBLIC_PORT=9000
+      - MINIO_ENFORCE_PRIVATE_POLICY=true
+    # Local debugging hook: reach the app directly at http://localhost:3000
+    # without going through the tunnel. Remove this line to keep it fully private.
+    ports:
+      - "127.0.0.1:3000:3000"
+    command: >
+      sh -c "npx prisma generate &&
+      npx prisma db push &&
+      npm run build &&
+      npm run start -- --hostname 0.0.0.0 --port 3000"
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      storage:
+        condition: service_healthy
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-croquis}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB:-croquis}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-croquis} -d ${POSTGRES_DB:-croquis}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  storage:
+    image: minio/minio:latest
+    environment:
+      - MINIO_ROOT_USER=${MINIO_ROOT_USER}
+      - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD}
+    command: server /data --console-address ":9001"
+    volumes:
+      - miniodata:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Cloudflare Tunnel. Paste the tunnel token into TUNNEL_TOKEN in .env.
+  # The public hostname (caligraphia.com -> http://app:3000) is configured
+  # in the Cloudflare Zero Trust dashboard when you create the tunnel.
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    command: tunnel --no-autoupdate run --token ${TUNNEL_TOKEN}
+    restart: unless-stopped
+    depends_on:
+      - app
+
+volumes:
+  pgdata:
+  miniodata:
