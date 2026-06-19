@@ -7,6 +7,7 @@ function SignupContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const signupToken = searchParams.get("signupToken") || "";
+  const inviteToken = searchParams.get("invite") || "";
 
   const [username, setUsername] = useState("");
   const [nomDePlumeFile, setNomDePlumeFile] = useState<File | null>(null);
@@ -34,6 +35,7 @@ function SignupContent() {
       const formData = new FormData();
       formData.append("signupToken", signupToken);
       formData.append("username", username.trim());
+      if (inviteToken) formData.append("invite", inviteToken);
       if (nomDePlumeFile) formData.append("nomDePlume", nomDePlumeFile);
       const res = await fetch("/api/auth/signup", { method: "POST", body: formData });
       const data = await res.json();

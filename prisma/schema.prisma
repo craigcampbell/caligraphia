@@ -39,6 +39,9 @@ model User {
   exchangesStarted Exchange[] @relation("ExchangeUserA")
   exchangesJoined  Exchange[] @relation("ExchangeUserB")
 
+  invitesSent     Invite[] @relation("InvitesSent")
+  invitesAccepted Invite[] @relation("InviteAccepted")
+
   @@map("users")
 }
 
@@ -334,4 +337,36 @@ model Marginalium {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("marginalia")
+}
+
+enum InviteStatus {
+  pending
+  accepted
+  revoked
+  expired
+}
+
+// A friend invitation: the inviter types a recipient's email and handwrites an
+// 18th-century postcard. The note is rendered to a postcard image and emailed.
+// On acceptance, inviter and new member become mutual friends (follow each other).
+model Invite {
+  id             String       @id @default(uuid()) @db.Uuid
+  inviterId      String       @map("inviter_id") @db.Uuid
+  email          String       @map("email")
+  token          String       @unique
+  strokeData     Json         @map("stroke_data")
+  inkStyle       String       @default("standard") @map("ink_style")
+  paperType      String?      @map("paper_type")
+  imageUrl       String       @map("image_url")
+  status         InviteStatus @default(pending)
+  expiresAt      DateTime     @map("expires_at")
+  createdAt      DateTime     @default(now()) @map("created_at")
+  acceptedAt     DateTime?    @map("accepted_at")
+  acceptedUserId String?      @map("accepted_user_id") @db.Uuid
+
+  inviter      User  @relation("InvitesSent", fields: [inviterId], references: [id], onDelete: Cascade)
+  acceptedUser User? @relation("InviteAccepted", fields: [acceptedUserId], references: [id])
+
+  @@index([inviterId, createdAt])
+  @@map("invites")
 }

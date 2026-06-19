@@ -12,6 +12,7 @@ export async function POST(request: Request) {
 
     const signupToken = formData.get("signupToken") as string;
     const username = formData.get("username") as string;
+    const inviteToken = formData.get("invite") as string | null;
     const nomDePlumeFile = formData.get("nomDePlume") as File | null;
 
     const bodyObj: Record<string, unknown> = { signupToken, username };
@@ -77,6 +78,57 @@ export async function POST(request: Request) {
         stampBalance: DAILY_STAMP_ALLOWANCE,
       },
     });
+
+    // If they arrived through a friend invitation, connect inviter and new
+    // member as mutual friends and close out the invite. The invite's email
+    // must match the verified signup email so the token can't link a stranger.
+    if (inviteToken) {
+      try {
+        const invite = await prisma.invite.findUnique({
+          where: { token: inviteToken },
+        });
+        if (
+          invite &&
+          invite.status === "pending" &&
+          invite.email === payload.email &&
+          invite.inviterId !== user.id
+        ) {
+          await prisma.$transaction([
+            prisma.userFollow.upsert({
+              where: {
+                followerId_followingId: {
+                  followerId: invite.inviterId,
+                  followingId: user.id,
+                },
+              },
+              update: {},
+              create: { followerId: invite.inviterId, followingId: user.id },
+            }),
+            prisma.userFollow.upsert({
+              where: {
+                followerId_followingId: {
+                  followerId: user.id,
+                  followingId: invite.inviterId,
+                },
+              },
+              update: {},
+              create: { followerId: user.id, followingId: invite.inviterId },
+            }),
+            prisma.invite.update({
+              where: { id: invite.id },
+              data: {
+                status: "accepted",
+                acceptedAt: new Date(),
+                acceptedUserId: user.id,
+              },
+            }),
+          ]);
+        }
+      } catch (err) {
+        // A linking hiccup shouldn't block the account from being created.
+        console.error("Invite linking failed:", err);
+      }
+    }
 
     await setSessionCookie({
       userId: user.id,

@@ -48,6 +48,7 @@ export function NavBar() {
             <Link href="/robins" className="nav-link" title="Letters written by three hands">Robins</Link>
             <Link href="/dead-letters" className="nav-link" title="Letters to no one, waiting to be claimed">Dead Letters</Link>
             <Link href="/groups" className="nav-link">Circles</Link>
+            <Link href="/invite" className="nav-link" title="Send a friend a handwritten postcard invitation">Invite</Link>
             <Link href="/stamps" className="nav-link" title="Stamp Book">
               <StarIcon size={14} />Stamps
             </Link>
