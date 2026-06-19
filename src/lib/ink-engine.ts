@@ -10,12 +10,14 @@ export interface StrokePoint {
   pressure: number;
   color: string;
   ink?: string; // per-point pen; falls back to the post's inkStyle
+  size?: number; // brush-size multiplier; falls back to 1 for older posts
   tiltX?: number;
   tiltY?: number;
 }
 
 export type InkId =
   | "standard"
+  | "fountain"
   | "runny"
   | "quill"
   | "calligraphy"
@@ -28,6 +30,7 @@ export type InkId =
   | "illumination";
 
 export const INK_STYLES: ReadonlyArray<{ id: InkId; name: string; desc: string }> = [
+  { id: "fountain", name: "Fountain", desc: "inkwell pen — thin to thick with pressure & speed" },
   { id: "standard", name: "Standard", desc: "round nib" },
   { id: "runny", name: "Runny", desc: "wet & splattery" },
   { id: "quill", name: "Quill", desc: "scratchy nib" },
@@ -174,7 +177,8 @@ export function renderSegment(
   x1: number, y1: number, x2: number, y2: number,
   p1: number, p2: number,
   color: string,
-  scale: number = 1
+  scale: number = 1,
+  sizeMul: number = 1
 ) {
   const dx = x2 - x1;
   const dy = y2 - y1;
@@ -182,8 +186,8 @@ export function renderSegment(
   const speed = dist;
 
   if (ink === "calligraphy" || ink === "italic" || ink === "blackletter") {
-    const h1 = nibHalfWidth(p1, scale, ink);
-    const h2 = nibHalfWidth(p2, scale, ink);
+    const h1 = nibHalfWidth(p1, scale, ink) * sizeMul;
+    const h2 = nibHalfWidth(p2, scale, ink) * sizeMul;
     const angle = nibAngle(ink);
     const opacity = ink === "blackletter" ? 0.9 + ri() * 0.08 : 0.82 + ri() * 0.12;
     fillNibRibbon(ctx, x1, y1, x2, y2, h1, h2, color, opacity, angle);
@@ -204,13 +208,23 @@ export function renderSegment(
   }
 
   if (ink === "goldLeaf") {
-    renderGoldLeafSegment(ctx, x1, y1, x2, y2, p1, p2, color, scale);
+    renderGoldLeafSegment(ctx, x1, y1, x2, y2, p1, p2, color, scale * sizeMul);
     return;
   }
 
   let baseW: number;
   let alpha: number;
-  if (ink === "runny") {
+  if (ink === "fountain") {
+    // Inkwell / fountain pen: a flexible pointed nib. The line swells with
+    // pressure and lingers (slow strokes lay down more ink), and tapers to a
+    // hairline when the hand moves fast or light — the thin-to-thick feel of
+    // a real dip pen. Speed carries the variation for mouse/trackpad users
+    // who have no pressure at all.
+    const pAvg = (p1 + p2) / 2;
+    const speedFactor = Math.max(0.4, Math.min(1.5, (130 * scale) / (speed + 14 * scale)));
+    baseW = Math.max(1.1, (2.5 + pAvg * 13) * speedFactor) * scale;
+    alpha = 0.9 + ri() * 0.08;
+  } else if (ink === "runny") {
     baseW = Math.max(2, ((p1 + p2) / 2) * 10) * scale;
     alpha = 0.7 + ri() * 0.3;
   } else if (ink === "quill") {
@@ -235,6 +249,9 @@ export function renderSegment(
     baseW = Math.max(2, ((p1 + p2) / 2) * 9) * scale;
     alpha = 1;
   }
+
+  // Brush-size multiplier applies to every width-based ink at once.
+  baseW *= sizeMul;
 
   // Overlapping circles: much smoother than lineTo on fast strokes
   const stepSize = Math.max(1, baseW * 0.3);
@@ -309,8 +326,11 @@ export function drawDot(
   px: number, py: number,
   pressure: number,
   color: string,
-  scale: number = 1
+  scale: number = 1,
+  sizeMul: number = 1
 ) {
+  // A dot has no speed, so the brush size folds cleanly into the scale.
+  scale *= sizeMul;
   if (ink === "runny") {
     ctx.beginPath();
     ctx.arc(px, py, Math.max(1, pressure * 8) * scale, 0, Math.PI * 2);
@@ -357,6 +377,13 @@ export function drawDot(
   } else if (ink === "copperplate") {
     ctx.beginPath();
     ctx.arc(px, py, Math.max(0.4, pressure * 9) * scale, 0, Math.PI * 2);
+    ctx.fillStyle = color;
+    ctx.globalAlpha = 0.92;
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  } else if (ink === "fountain") {
+    ctx.beginPath();
+    ctx.arc(px, py, Math.max(1, pressure * 9) * scale, 0, Math.PI * 2);
     ctx.fillStyle = color;
     ctx.globalAlpha = 0.92;
     ctx.fill();
@@ -413,19 +440,20 @@ export function renderStrokes(
     const ink = p.ink || defaultInk;
     const px = p.x * width;
     const py = p.y * height;
+    const sizeMul = p.size ?? 1;
     if (i > 0) {
       const prev = sorted[i - 1];
       if (p.time - prev.time < STROKE_GAP_MS) {
         renderSegment(
           ctx, ink,
           prev.x * width, prev.y * height, px, py,
-          prev.pressure, p.pressure, p.color, scale
+          prev.pressure, p.pressure, p.color, scale, sizeMul
         );
       } else {
-        drawDot(ctx, ink, px, py, p.pressure, p.color, scale);
+        drawDot(ctx, ink, px, py, p.pressure, p.color, scale, sizeMul);
       }
     } else {
-      drawDot(ctx, ink, px, py, p.pressure, p.color, scale);
+      drawDot(ctx, ink, px, py, p.pressure, p.color, scale, sizeMul);
     }
   }
 }

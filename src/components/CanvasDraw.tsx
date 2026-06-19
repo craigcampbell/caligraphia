@@ -125,7 +125,10 @@ export function CanvasDraw({
   const [paper, setPaper] = useState<PaperId>(
     (() => { const h = new Date().getHours(); return (h >= 2 && h < 4) ? "midnight" : "ruled"; })()
   );
-  const [inkStyle, setInkStyle] = useState<InkId>("standard");
+  const [inkStyle, setInkStyle] = useState<InkId>("fountain");
+  const [tool, setTool] = useState<"pen" | "eraser">("pen");
+  // Brush-size multiplier applied to whatever pen is selected (and the eraser).
+  const [brushSize, setBrushSize] = useState(1);
   const [hint, setHint] = useState("");
 
   // Pen scratch sounds
@@ -232,19 +235,19 @@ export function CanvasDraw({
     const tiltY = (e as any).tiltY !== undefined ? (e as any).tiltY : undefined;
     const now = Date.now();
     if (!firstStrokeTimeRef.current) { firstStrokeTimeRef.current = now; startTimer(); }
-    strokesRef.current.push({ time: now, x, y, pressure, color: selectedColor, ink: inkStyle, tiltX, tiltY });
+    strokesRef.current.push({ time: now, x, y, pressure, color: selectedColor, ink: inkStyle, size: brushSize, tiltX, tiltY });
     const px = x * canvasW;
     const py = y * canvasH;
     const prev = lastPtRef.current;
     if (prev) {
       const lastStroke = strokesRef.current[strokesRef.current.length - 2];
       if (lastStroke && now - lastStroke.time < STROKE_GAP_MS) {
-        renderSegment(ctx, inkStyle, prev.px, prev.py, px, py, prev.pressure, pressure, selectedColor, inkScale);
+        renderSegment(ctx, inkStyle, prev.px, prev.py, px, py, prev.pressure, pressure, selectedColor, inkScale, brushSize);
       } else {
-        drawDot(ctx, inkStyle, px, py, pressure, selectedColor, inkScale);
+        drawDot(ctx, inkStyle, px, py, pressure, selectedColor, inkScale, brushSize);
       }
     } else {
-      drawDot(ctx, inkStyle, px, py, pressure, selectedColor, inkScale);
+      drawDot(ctx, inkStyle, px, py, pressure, selectedColor, inkScale, brushSize);
     }
     lastPtRef.current = { px, py, pressure, color: selectedColor };
 
@@ -253,7 +256,45 @@ export function CanvasDraw({
       const speed = Math.sqrt((px - (prev?.px || px)) ** 2 + (py - (prev?.py || py)) ** 2);
       updateScratch(speed);
     }
-  }, [getCoords, smoothCoords, selectedColor, inkStyle, soundOn, updateScratch]);
+  }, [getCoords, smoothCoords, selectedColor, inkStyle, brushSize, soundOn, updateScratch]);
+
+  // Object eraser: lift out any whole stroke the eraser passes over. It edits
+  // the vector stroke data (not pixels), so the server re-render matches and
+  // undo keeps working.
+  const eraseAt = (nx: number, ny: number) => {
+    const pts = strokesRef.current;
+    const starts = strokeStartsRef.current;
+    if (pts.length === 0 || starts.length === 0) return;
+    const cx = nx * canvasW;
+    const cy = ny * canvasH;
+    const radius = 60 * inkScale * Math.max(1, brushSize);
+    const r2 = radius * radius;
+    const removed = new Set<number>();
+    for (let k = 0; k < starts.length; k++) {
+      const s = starts[k];
+      const e = k + 1 < starts.length ? starts[k + 1] : pts.length;
+      for (let i = s; i < e; i++) {
+        const ddx = pts[i].x * canvasW - cx;
+        const ddy = pts[i].y * canvasH - cy;
+        if (ddx * ddx + ddy * ddy <= r2) { removed.add(k); break; }
+      }
+    }
+    if (removed.size === 0) return;
+    const rebuilt: StrokePoint[] = [];
+    const newStarts: number[] = [];
+    for (let k = 0; k < starts.length; k++) {
+      const s = starts[k];
+      const e = k + 1 < starts.length ? starts[k + 1] : pts.length;
+      if (removed.has(k)) continue;
+      newStarts.push(rebuilt.length);
+      for (let i = s; i < e; i++) rebuilt.push(pts[i]);
+    }
+    strokesRef.current = rebuilt;
+    strokeStartsRef.current = newStarts;
+    setStrokeCount(newStarts.length);
+    const ctx = ctxRef.current;
+    if (ctx) redraw(ctx);
+  };
 
   const handleDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
     e.preventDefault();
@@ -267,6 +308,11 @@ export function CanvasDraw({
     setDrawing(true);
     lastPtRef.current = null;
     smoothedRef.current = null;
+    if (tool === "eraser") {
+      const { x, y } = getCoords(e);
+      eraseAt(x, y);
+      return;
+    }
     strokeStartsRef.current.push(strokesRef.current.length);
     setStrokeCount(strokeStartsRef.current.length);
     if (soundOn) startScratch();
@@ -275,6 +321,11 @@ export function CanvasDraw({
   const handleMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
     if (!drawing || e.pointerId !== activePointerRef.current) return;
     e.preventDefault();
+    if (tool === "eraser") {
+      const { x, y } = getCoords(e);
+      eraseAt(x, y);
+      return;
+    }
     drawPt(e);
   };
   const handleUp = (e: React.PointerEvent<HTMLCanvasElement>) => {
@@ -352,7 +403,7 @@ export function CanvasDraw({
   }, [selectedColor]);
 
   return (
-    <div className="canvas-shell">
+    <div className="canvas-shell notranslate" translate="no">
       <div className="canvas-topbar">
         <div className="paper-chooser">
           {PAPER_PRESETS.map((p) => (
@@ -380,6 +431,42 @@ export function CanvasDraw({
               value={selectedColor}
               onChange={(e) => setSelectedColor(e.currentTarget.value.toLowerCase())}
               aria-label="Choose custom ink color"
+            />
+          </label>
+        </div>
+
+        <div className="tool-group">
+          <div className="pen-eraser">
+            <button
+              className={`tool-btn ${tool === "pen" ? "active" : ""}`}
+              onClick={() => setTool("pen")}
+              title="Pen"
+            >
+              Pen
+            </button>
+            <button
+              className={`tool-btn ${tool === "eraser" ? "active" : ""}`}
+              onClick={() => setTool("eraser")}
+              title="Eraser — drag over a stroke to lift it off"
+            >
+              Eraser
+            </button>
+          </div>
+          <label className="size-control" title="Brush / eraser size">
+            <span className="size-caption">Size</span>
+            <input
+              type="range"
+              min={0.4}
+              max={3}
+              step={0.1}
+              value={brushSize}
+              onChange={(e) => setBrushSize(parseFloat(e.currentTarget.value))}
+              className="size-range"
+              aria-label="Brush size"
+            />
+            <span
+              className="size-dot"
+              style={{ width: 5 + brushSize * 7, height: 5 + brushSize * 7 }}
             />
           </label>
         </div>
@@ -436,10 +523,11 @@ export function CanvasDraw({
         </div>
       </div>
 
-      <canvas ref={canvasRef} className="draw-canvas"
+      <canvas ref={canvasRef} className="draw-canvas notranslate" translate="no"
         onPointerDown={handleDown} onPointerMove={handleMove}
         onPointerUp={handleUp} onPointerLeave={handleUp}
-        style={{ touchAction: "none" }}
+        onContextMenu={(e) => e.preventDefault()}
+        style={{ touchAction: "none", cursor: tool === "eraser" ? "cell" : "crosshair" }}
       />
 
       <div className="canvas-actions">
@@ -453,8 +541,24 @@ export function CanvasDraw({
       </div>
 
       <style>{`
-        .canvas-shell { display: flex; flex-direction: column; align-items: center; gap: 10px; width: 100%; }
+        .canvas-shell {
+          display: flex; flex-direction: column; align-items: center; gap: 10px; width: 100%;
+          user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
+        }
         .canvas-topbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; width: 100%; }
+        .tool-group { display: flex; align-items: center; gap: 12px; }
+        .pen-eraser { display: flex; gap: 4px; }
+        .tool-btn {
+          padding: 5px 14px; border: 1.5px solid #d0c8b8; border-radius: 8px;
+          cursor: pointer; font-size: 12px; font-family: inherit; font-weight: 600;
+          color: #5c5040; background: #fefdf9; transition: all 0.15s;
+        }
+        .tool-btn:hover { border-color: #b0a090; }
+        .tool-btn.active { border-color: #8b4513; background: #ede0cc; box-shadow: 0 0 0 2px rgba(139,69,19,0.15); }
+        .size-control { display: flex; align-items: center; gap: 8px; }
+        .size-caption { font-size: 12px; color: #8c7a60; font-weight: 500; }
+        .size-range { width: 90px; accent-color: #8b4513; cursor: pointer; }
+        .size-dot { display: inline-block; border-radius: 50%; background: #5c5040; flex-shrink: 0; transition: width 0.1s, height 0.1s; }
         .paper-chooser, .ink-style-chooser { display: flex; gap: 4px; flex-wrap: wrap; }
         .paper-chip, .ink-chip {
           padding: 5px 12px; border: 1.5px solid #d0c8b8; border-radius: 8px;

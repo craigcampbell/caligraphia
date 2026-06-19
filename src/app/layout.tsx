@@ -14,6 +14,9 @@ const plexSerif = IBM_Plex_Serif({
 export const metadata: Metadata = {
   title: "Caligraphia",
   description: "A gathering place for people who love handwriting, doodling, and letters made by hand",
+  // This is a handwriting app — there's no UI text worth translating, and the
+  // browser's translate prompt interferes with drawing. Tell Google to skip it.
+  other: { google: "notranslate" },
 };
 
 export const viewport: Viewport = {
