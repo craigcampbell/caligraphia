@@ -126,10 +126,26 @@ export function CanvasDraw({
     (() => { const h = new Date().getHours(); return (h >= 2 && h < 4) ? "midnight" : "ruled"; })()
   );
   const [inkStyle, setInkStyle] = useState<InkId>("fountain");
-  const [tool, setTool] = useState<"pen" | "eraser">("pen");
+  const [tool, setTool] = useState<"pen" | "eraser" | "hand">("pen");
   // Brush-size multiplier applied to whatever pen is selected (and the eraser).
   const [brushSize, setBrushSize] = useState(1);
   const [hint, setHint] = useState("");
+
+  // Zoom & pan. The paper fills the frame width at zoom 1 (so it starts close,
+  // like writing on a real sheet); zoom multiplies that, pan slides it around.
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const baseScaleRef = useRef(1); // CSS px per drawing unit at zoom 1 (fit-to-width)
+  const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const MIN_ZOOM = 0.5;
+  const MAX_ZOOM = 6;
+  // Live pointer positions (client coords) for pinch/2-finger pan.
+  const pointersRef = useRef<Map<number, { x: number; y: number; type: string }>>(new Map());
+  const gestureRef = useRef<
+    | { startDist: number; startZoom: number; startPan: { x: number; y: number }; anchor: { x: number; y: number } }
+    | null
+  >(null);
+  const panDragRef = useRef<{ x: number; y: number } | null>(null);
 
   // Pen scratch sounds
   const [soundOn, setSoundOn] = useState(false);
@@ -156,15 +172,16 @@ export function CanvasDraw({
     const canvas = canvasRef.current;
     if (!canvas) return;
     const resize = () => {
-      const parent = canvas.parentElement;
-      if (!parent) return;
-      const pw = parent.clientWidth;
-      const ph = Math.max(window.innerHeight * 0.78, 500);
-      const scale = Math.min(pw / canvasW, ph / canvasH);
+      const vp = viewportRef.current;
+      if (!vp) return;
+      // Fit-to-width: the sheet fills the frame across at zoom 1, so it starts
+      // close (like a real page); zoom/pan handle the rest.
+      const baseScale = vp.clientWidth / canvasW;
+      baseScaleRef.current = baseScale;
       canvas.width = canvasW;
       canvas.height = canvasH;
-      canvas.style.width = `${canvasW * scale}px`;
-      canvas.style.height = `${canvasH * scale}px`;
+      canvas.style.width = `${canvasW * baseScale}px`;
+      canvas.style.height = `${canvasH * baseScale}px`;
       const ctx = canvas.getContext("2d");
       if (ctx) { ctxRef.current = ctx; redraw(ctx); }
     };
@@ -172,6 +189,77 @@ export function CanvasDraw({
     window.addEventListener("resize", resize);
     return () => { window.removeEventListener("resize", resize); if (timerRef.current) clearInterval(timerRef.current); };
   }, [paper, inkStyle]);
+
+  // Mirror zoom/pan into refs so the high-frequency wheel/pinch handlers read
+  // current values without waiting on a React re-render.
+  const zoomRef = useRef(1);
+  const panRef = useRef({ x: 0, y: 0 });
+  useEffect(() => {
+    zoomRef.current = zoom;
+    panRef.current = pan;
+    const canvas = canvasRef.current;
+    if (canvas) canvas.style.transform = `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`;
+  }, [zoom, pan]);
+
+  const clampZoom = (z: number) => Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, z));
+
+  // Keep at least a sliver of the page on screen so it can't be lost.
+  const clampPan = (p: { x: number; y: number }, z: number) => {
+    const vp = viewportRef.current;
+    if (!vp) return p;
+    const vw = vp.clientWidth, vh = vp.clientHeight;
+    const cw = canvasW * baseScaleRef.current * z;
+    const ch = canvasH * baseScaleRef.current * z;
+    const keep = 100;
+    return {
+      x: Math.max(keep - cw, Math.min(vw - keep, p.x)),
+      y: Math.max(keep - ch, Math.min(vh - keep, p.y)),
+    };
+  };
+
+  const updateView = (z: number, p: { x: number; y: number }) => {
+    zoomRef.current = z;
+    panRef.current = p;
+    setZoom(z);
+    setPan(p);
+  };
+
+  // Zoom about a point in viewport-local pixels, keeping that point anchored.
+  const zoomAtPoint = (vx: number, vy: number, factor: number) => {
+    const z0 = zoomRef.current, p0 = panRef.current;
+    const z1 = clampZoom(z0 * factor);
+    const qx = (vx - p0.x) / z0, qy = (vy - p0.y) / z0;
+    updateView(z1, clampPan({ x: vx - qx * z1, y: vy - qy * z1 }, z1));
+  };
+
+  const zoomByButton = (factor: number) => {
+    const vp = viewportRef.current;
+    const vx = vp ? vp.clientWidth / 2 : 0;
+    const vy = vp ? vp.clientHeight / 2 : 0;
+    zoomAtPoint(vx, vy, factor);
+  };
+
+  const resetView = () => updateView(1, { x: 0, y: 0 });
+
+  // Non-passive wheel: ctrl/⌘ or trackpad-pinch zooms toward the cursor; a plain
+  // scroll pans. Attached natively so preventDefault actually stops page zoom.
+  useEffect(() => {
+    const vp = viewportRef.current;
+    if (!vp) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const rect = vp.getBoundingClientRect();
+      const vx = e.clientX - rect.left, vy = e.clientY - rect.top;
+      if (e.ctrlKey || e.metaKey) {
+        zoomAtPoint(vx, vy, Math.exp(-e.deltaY * 0.0015));
+      } else {
+        const p0 = panRef.current;
+        updateView(zoomRef.current, clampPan({ x: p0.x - e.deltaX, y: p0.y - e.deltaY }, zoomRef.current));
+      }
+    };
+    vp.addEventListener("wheel", onWheel, { passive: false });
+    return () => vp.removeEventListener("wheel", onWheel);
+  }, []);
 
   const redraw = (ctx: CanvasRenderingContext2D) => {
     drawPaper(ctx, paper, canvasW, canvasH);
@@ -296,9 +384,82 @@ export function CanvasDraw({
     if (ctx) redraw(ctx);
   };
 
+  // ---- Two-finger pinch-zoom / pan, and the hand (pan) tool ----
+  const touchPointers = () =>
+    [...pointersRef.current.values()].filter((p) => p.type === "touch");
+
+  const beginGesture = () => {
+    const t = touchPointers();
+    const vp = viewportRef.current;
+    if (t.length < 2 || !vp) return;
+    const rect = vp.getBoundingClientRect();
+    const a = { x: t[0].x - rect.left, y: t[0].y - rect.top };
+    const b = { x: t[1].x - rect.left, y: t[1].y - rect.top };
+    const cx = (a.x + b.x) / 2, cy = (a.y + b.y) / 2;
+    const z0 = zoomRef.current, p0 = panRef.current;
+    gestureRef.current = {
+      startDist: Math.max(1, Math.hypot(a.x - b.x, a.y - b.y)),
+      startZoom: z0,
+      startPan: p0,
+      anchor: { x: (cx - p0.x) / z0, y: (cy - p0.y) / z0 },
+    };
+  };
+
+  const updateGesture = () => {
+    const g = gestureRef.current;
+    const t = touchPointers();
+    const vp = viewportRef.current;
+    if (!g || t.length < 2 || !vp) return;
+    const rect = vp.getBoundingClientRect();
+    const a = { x: t[0].x - rect.left, y: t[0].y - rect.top };
+    const b = { x: t[1].x - rect.left, y: t[1].y - rect.top };
+    const cx = (a.x + b.x) / 2, cy = (a.y + b.y) / 2;
+    const dist = Math.max(1, Math.hypot(a.x - b.x, a.y - b.y));
+    const z1 = clampZoom(g.startZoom * (dist / g.startDist));
+    updateView(z1, clampPan({ x: cx - g.anchor.x * z1, y: cy - g.anchor.y * z1 }, z1));
+  };
+
+  // Drop a half-drawn finger stroke when a second finger turns it into a gesture.
+  const discardActiveTouchStroke = () => {
+    if (activePointerRef.current === null) return;
+    const ptr = pointersRef.current.get(activePointerRef.current);
+    if (ptr && ptr.type === "pen") return; // never disturb a stylus stroke
+    if (tool === "pen" && strokeStartsRef.current.length > 0) {
+      const start = strokeStartsRef.current.pop()!;
+      strokesRef.current = strokesRef.current.slice(0, start);
+      setStrokeCount(strokeStartsRef.current.length);
+      const ctx = ctxRef.current;
+      if (ctx) redraw(ctx);
+    }
+    activePointerRef.current = null;
+    setDrawing(false);
+    lastPtRef.current = null;
+    smoothedRef.current = null;
+    if (soundOn) stopScratch();
+  };
+
   const handleDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
     e.preventDefault();
+    pointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY, type: e.pointerType });
     if (e.pointerType === "pen") penSeenRef.current = true;
+
+    // Two fingers → pinch-zoom / pan, even on a stylus device.
+    if (touchPointers().length >= 2) {
+      discardActiveTouchStroke();
+      beginGesture();
+      return;
+    }
+    if (gestureRef.current) return;
+
+    // Hand tool: drag to pan.
+    if (tool === "hand") {
+      panDragRef.current = { x: e.clientX, y: e.clientY };
+      activePointerRef.current = e.pointerId;
+      canvasRef.current?.setPointerCapture(e.pointerId);
+      setDrawing(true);
+      return;
+    }
+
     // Palm rejection: ignore fingers once a stylus is in play, and ignore
     // any second pointer while one is already drawing.
     if (e.pointerType === "touch" && penSeenRef.current) return;
@@ -318,7 +479,24 @@ export function CanvasDraw({
     if (soundOn) startScratch();
     drawPt(e);
   };
+
   const handleMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (pointersRef.current.has(e.pointerId)) {
+      pointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY, type: e.pointerType });
+    }
+    if (gestureRef.current) {
+      e.preventDefault();
+      updateGesture();
+      return;
+    }
+    if (tool === "hand" && panDragRef.current && e.pointerId === activePointerRef.current) {
+      e.preventDefault();
+      const dx = e.clientX - panDragRef.current.x;
+      const dy = e.clientY - panDragRef.current.y;
+      panDragRef.current = { x: e.clientX, y: e.clientY };
+      updateView(zoomRef.current, clampPan({ x: panRef.current.x + dx, y: panRef.current.y + dy }, zoomRef.current));
+      return;
+    }
     if (!drawing || e.pointerId !== activePointerRef.current) return;
     e.preventDefault();
     if (tool === "eraser") {
@@ -328,7 +506,22 @@ export function CanvasDraw({
     }
     drawPt(e);
   };
+
   const handleUp = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    pointersRef.current.delete(e.pointerId);
+    if (gestureRef.current && touchPointers().length < 2) {
+      // Gesture over. If a lone finger remains, don't let it start drawing.
+      gestureRef.current = null;
+      activePointerRef.current = null;
+      setDrawing(false);
+      return;
+    }
+    if (gestureRef.current) return;
+    if (tool === "hand") {
+      panDragRef.current = null;
+      if (e.pointerId === activePointerRef.current) { activePointerRef.current = null; setDrawing(false); }
+      return;
+    }
     if (activePointerRef.current !== null && e.pointerId !== activePointerRef.current) return;
     e.preventDefault();
     activePointerRef.current = null;
@@ -451,6 +644,13 @@ export function CanvasDraw({
             >
               Eraser
             </button>
+            <button
+              className={`tool-btn ${tool === "hand" ? "active" : ""}`}
+              onClick={() => setTool("hand")}
+              title="Hand — drag to move the page around"
+            >
+              ✋ Pan
+            </button>
           </div>
           <label className="size-control" title="Brush / eraser size">
             <span className="size-caption">Size</span>
@@ -523,12 +723,23 @@ export function CanvasDraw({
         </div>
       </div>
 
-      <canvas ref={canvasRef} className="draw-canvas notranslate" translate="no"
-        onPointerDown={handleDown} onPointerMove={handleMove}
-        onPointerUp={handleUp} onPointerLeave={handleUp}
-        onContextMenu={(e) => e.preventDefault()}
-        style={{ touchAction: "none", cursor: tool === "eraser" ? "cell" : "crosshair" }}
-      />
+      <div className="canvas-viewport" ref={viewportRef}>
+        <canvas ref={canvasRef} className="draw-canvas notranslate" translate="no"
+          onPointerDown={handleDown} onPointerMove={handleMove}
+          onPointerUp={handleUp} onPointerLeave={handleUp} onPointerCancel={handleUp}
+          onContextMenu={(e) => e.preventDefault()}
+          style={{
+            touchAction: "none",
+            transformOrigin: "0 0",
+            cursor: tool === "hand" ? "grab" : tool === "eraser" ? "cell" : "crosshair",
+          }}
+        />
+        <div className="zoom-controls notranslate" translate="no">
+          <button className="zoom-btn" onClick={() => zoomByButton(1 / 1.25)} title="Zoom out" aria-label="Zoom out">&#8722;</button>
+          <button className="zoom-pct" onClick={resetView} title="Reset view">{Math.round(zoom * 100)}%</button>
+          <button className="zoom-btn" onClick={() => zoomByButton(1.25)} title="Zoom in" aria-label="Zoom in">&#43;</button>
+        </div>
+      </div>
 
       <div className="canvas-actions">
         <button onClick={onCancel} className="btn-cancel">Discard</button>
@@ -624,7 +835,34 @@ export function CanvasDraw({
           color: #b0a090; transition: all 0.15s; padding: 0;
         }
         .ink-splatter-btn:hover { border-color: #8b4513; color: #8b4513; background: #fff5f0; }
-        .draw-canvas { border: 1px solid #d8d0c0; border-radius: 4px; cursor: crosshair; box-shadow: 0 2px 20px rgba(0,0,0,0.06), 0 1px 4px rgba(0,0,0,0.04); }
+        .canvas-viewport {
+          position: relative; width: 100%;
+          height: 70vh; max-height: 820px; min-height: 360px;
+          overflow: hidden; border: 1px solid #d8d0c0; border-radius: 6px;
+          background: #e7e1d4; touch-action: none;
+          box-shadow: inset 0 2px 14px rgba(80,40,20,0.08);
+        }
+        .draw-canvas {
+          position: absolute; top: 0; left: 0;
+          box-shadow: 0 2px 20px rgba(0,0,0,0.10), 0 1px 4px rgba(0,0,0,0.05);
+          will-change: transform;
+        }
+        .zoom-controls {
+          position: absolute; bottom: 12px; right: 12px; display: flex; align-items: center;
+          gap: 2px; background: rgba(255,254,249,0.94); border: 1px solid #d8d0c0;
+          border-radius: 10px; padding: 3px; box-shadow: 0 2px 10px rgba(0,0,0,0.12);
+          backdrop-filter: blur(2px);
+        }
+        .zoom-btn {
+          width: 32px; height: 32px; border: none; background: none; cursor: pointer;
+          font-size: 19px; line-height: 1; color: #5c4a30; border-radius: 7px; font-family: inherit;
+        }
+        .zoom-btn:hover { background: rgba(0,0,0,0.06); }
+        .zoom-pct {
+          min-width: 52px; height: 32px; border: none; background: none; cursor: pointer;
+          font-size: 12px; font-weight: 600; color: #5c4a30; border-radius: 7px; font-family: inherit;
+        }
+        .zoom-pct:hover { background: rgba(0,0,0,0.06); }
         .canvas-actions { display: flex; gap: 14px; padding: 6px 0 20px; }
         .btn-cancel { padding: 12px 32px; border: 1px solid #ccc; border-radius: 8px; background: #fff; cursor: pointer; font-size: 15px; font-weight: 500; font-family: inherit; }
         .btn-cancel:hover { background: #f8f5f0; }
