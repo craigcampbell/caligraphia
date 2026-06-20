@@ -33,7 +33,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={plexSerif.variable}>
+    <html lang="en" translate="no" className={`${plexSerif.variable} notranslate`}>
       <body>
         <Providers>{children}</Providers>
       </body>
