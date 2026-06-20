@@ -158,12 +158,16 @@ async function handleCanvasPost(body: Record<string, unknown>, session: { userId
       : await renderCanvasToPng(strokeData, paper, inkStyle);
 
   if (previewOnly) {
-    // Hand the rendered preview straight back as a data URL. The browser can't
-    // reach MinIO directly (it's internal-only behind the tunnel), so an internal
-    // storage URL renders as a broken image. The final send re-renders from the
-    // strokes anyway, so there's nothing worth storing here.
-    const compressedBuffer = await sharp(pngBuffer).png({ quality: 80 }).toBuffer();
-    const dataUrl = `data:image/png;base64,${compressedBuffer.toString("base64")}`;
+    // Hand the preview straight back as a data URL (the browser can't reach
+    // MinIO directly behind the tunnel). Keep it SMALL: a full-res base64 string
+    // held in React state next to the big canvas was enough to make iOS Safari
+    // reload the page mid-flow. The envelope only shows it small, and the final
+    // send re-renders at full resolution, so a downscaled preview is plenty.
+    const previewBuffer = await sharp(pngBuffer)
+      .resize({ width: 1000, withoutEnlargement: true })
+      .png({ quality: 70 })
+      .toBuffer();
+    const dataUrl = `data:image/png;base64,${previewBuffer.toString("base64")}`;
     return NextResponse.json({ imageUrl: dataUrl });
   }
 
