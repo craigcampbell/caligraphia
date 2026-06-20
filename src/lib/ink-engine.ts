@@ -178,12 +178,16 @@ export function renderSegment(
   p1: number, p2: number,
   color: string,
   scale: number = 1,
-  sizeMul: number = 1
+  sizeMul: number = 1,
+  velocity?: number
 ) {
   const dx = x2 - x1;
   const dy = y2 - y1;
   const dist = Math.sqrt(dx * dx + dy * dy);
   const speed = dist;
+  // Hand speed in reference px / ms. Using real velocity (not raw point spacing)
+  // keeps stroke width stable no matter how densely the pen is sampled.
+  const velRef = velocity !== undefined ? velocity : dist / Math.max(scale, 1e-6) / 16;
 
   if (ink === "calligraphy" || ink === "italic" || ink === "blackletter") {
     const h1 = nibHalfWidth(p1, scale, ink) * sizeMul;
@@ -212,19 +216,47 @@ export function renderSegment(
     return;
   }
 
+  if (ink === "fountain") {
+    // Inkwell / fountain pen: a flexible pointed nib rendered as a crisp,
+    // variable-width ribbon. Width swells with pressure and thins as the hand
+    // speeds up (real ink lays down less when moving fast); the line darkens a
+    // touch under pressure, and ink pools where the nib slows or turns. Edges
+    // stay sharp — like ink on paper — rather than the soft airbrush of a
+    // stamped brush. Velocity carries the variation for mouse users with no
+    // pressure at all.
+    const speedFactor = Math.max(0.45, Math.min(1.6, 2.2 / (velRef + 1.3)));
+    const h1 = Math.max(0.6, (1.3 + p1 * 7) * speedFactor) * scale * sizeMul;
+    const h2 = Math.max(0.6, (1.3 + p2 * 7) * speedFactor) * scale * sizeMul;
+    const len = Math.max(1e-4, dist);
+    const nx = -dy / len, ny = dx / len;
+    const a = Math.min(1, 0.8 + ((p1 + p2) / 2) * 0.18);
+    ctx.fillStyle = color;
+    ctx.globalAlpha = a;
+    // Trapezoid ribbon between the two pressure-scaled half-widths...
+    ctx.beginPath();
+    ctx.moveTo(x1 + nx * h1, y1 + ny * h1);
+    ctx.lineTo(x2 + nx * h2, y2 + ny * h2);
+    ctx.lineTo(x2 - nx * h2, y2 - ny * h2);
+    ctx.lineTo(x1 - nx * h1, y1 - ny * h1);
+    ctx.closePath();
+    ctx.fill();
+    // ...with round caps so segment joins read as one continuous line.
+    ctx.beginPath(); ctx.arc(x1, y1, h1, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(x2, y2, h2, 0, Math.PI * 2); ctx.fill();
+    // Ink pools where the nib lingers or changes direction.
+    if (velRef < 0.5) {
+      ctx.globalAlpha = Math.min(1, a * 0.4);
+      ctx.beginPath();
+      ctx.ellipse((x1 + x2) / 2, (y1 + y2) / 2, h2 * 1.4, h2 * 1.05, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+    return;
+  }
+
   let baseW: number;
   let alpha: number;
-  if (ink === "fountain") {
-    // Inkwell / fountain pen: a flexible pointed nib. The line swells with
-    // pressure and lingers (slow strokes lay down more ink), and tapers to a
-    // hairline when the hand moves fast or light — the thin-to-thick feel of
-    // a real dip pen. Speed carries the variation for mouse/trackpad users
-    // who have no pressure at all.
-    const pAvg = (p1 + p2) / 2;
-    const speedFactor = Math.max(0.4, Math.min(1.5, (130 * scale) / (speed + 14 * scale)));
-    baseW = Math.max(1.1, (2.5 + pAvg * 13) * speedFactor) * scale;
-    alpha = 0.9 + ri() * 0.08;
-  } else if (ink === "runny") {
+  if (ink === "runny") {
     baseW = Math.max(2, ((p1 + p2) / 2) * 10) * scale;
     alpha = 0.7 + ri() * 0.3;
   } else if (ink === "quill") {
@@ -236,7 +268,7 @@ export function renderSegment(
     alpha = 0.9 + ri() * 0.1;
   } else if (ink === "brush") {
     // Wide brush — speed thins the stroke, pressure widens it
-    const speedFactor = Math.max(0.4, Math.min(1.2, (200 * scale) / (speed + 8 * scale)));
+    const speedFactor = Math.max(0.4, Math.min(1.3, 2.6 / (velRef + 1.0)));
     baseW = Math.max(1.5, ((p1 + p2) / 2) * 22 * speedFactor) * scale;
     alpha = 0.65 + ((p1 + p2) / 2) * 0.3;
   } else if (ink === "watercolor") {
@@ -444,10 +476,13 @@ export function renderStrokes(
     if (i > 0) {
       const prev = sorted[i - 1];
       if (p.time - prev.time < STROKE_GAP_MS) {
+        const dt = Math.max(1, p.time - prev.time);
+        const segDist = Math.hypot((p.x - prev.x) * width, (p.y - prev.y) * height);
+        const velocity = segDist / scale / dt; // reference px per ms
         renderSegment(
           ctx, ink,
           prev.x * width, prev.y * height, px, py,
-          prev.pressure, p.pressure, p.color, scale, sizeMul
+          prev.pressure, p.pressure, p.color, scale, sizeMul, velocity
         );
       } else {
         drawDot(ctx, ink, px, py, p.pressure, p.color, scale, sizeMul);

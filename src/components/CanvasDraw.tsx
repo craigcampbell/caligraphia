@@ -156,7 +156,7 @@ export function CanvasDraw({
 
   const strokesRef = useRef<StrokePoint[]>([]);
   const firstStrokeTimeRef = useRef<number | null>(null);
-  const lastPtRef = useRef<{ px: number; py: number; pressure: number; color: string } | null>(null);
+  const lastPtRef = useRef<{ px: number; py: number; pressure: number; color: string; time: number } | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Stroke boundaries (indexes into strokesRef) so the last stroke can be undone
@@ -317,37 +317,53 @@ export function CanvasDraw({
     return { x, y };
   }, []);
 
-  const drawPt = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
+  // Lay down one input sample. Takes raw client coords + pressure so it can be
+  // fed straight from coalesced pointer events (every Apple Pencil sample, not
+  // just one per frame). Width comes from pressure and true velocity.
+  const drawSample = (
+    clientX: number, clientY: number, rawPressure: number,
+    pointerType: string, evtTime: number, tiltX?: number, tiltY?: number
+  ) => {
     const ctx = ctxRef.current;
-    if (!ctx) return;
-    const { x, y } = smoothCoords(getCoords(e), e.pointerType);
-    const pressure = e.pressure || 0.5;
-    const tiltX = (e as any).tiltX !== undefined ? (e as any).tiltX : undefined;
-    const tiltY = (e as any).tiltY !== undefined ? (e as any).tiltY : undefined;
-    const now = Date.now();
-    if (!firstStrokeTimeRef.current) { firstStrokeTimeRef.current = now; startTimer(); }
-    strokesRef.current.push({ time: now, x, y, pressure, color: selectedColor, ink: inkStyle, size: brushSize, tiltX, tiltY });
+    const canvas = canvasRef.current;
+    if (!ctx || !canvas) return;
+    const r = canvas.getBoundingClientRect();
+    const raw = {
+      x: Math.max(0, Math.min(1, (clientX - r.left) / r.width)),
+      y: Math.max(0, Math.min(1, (clientY - r.top) / r.height)),
+    };
+    const { x, y } = smoothCoords(raw, pointerType);
+    const pressure = rawPressure || 0.5;
+    // High-res event time drives stroke gaps and velocity; a separate wall clock
+    // drives the anti-paste "ink drying" timer.
+    const t = evtTime;
+    if (!firstStrokeTimeRef.current) { firstStrokeTimeRef.current = Date.now(); startTimer(); }
+    strokesRef.current.push({ time: t, x, y, pressure, color: selectedColor, ink: inkStyle, size: brushSize, tiltX, tiltY });
     const px = x * canvasW;
     const py = y * canvasH;
     const prev = lastPtRef.current;
     if (prev) {
       const lastStroke = strokesRef.current[strokesRef.current.length - 2];
-      if (lastStroke && now - lastStroke.time < STROKE_GAP_MS) {
-        renderSegment(ctx, inkStyle, prev.px, prev.py, px, py, prev.pressure, pressure, selectedColor, inkScale, brushSize);
+      if (lastStroke && t - lastStroke.time < STROKE_GAP_MS) {
+        const dt = Math.max(0.5, t - prev.time);
+        const velocity = Math.hypot(px - prev.px, py - prev.py) / inkScale / dt;
+        renderSegment(ctx, inkStyle, prev.px, prev.py, px, py, prev.pressure, pressure, selectedColor, inkScale, brushSize, velocity);
       } else {
         drawDot(ctx, inkStyle, px, py, pressure, selectedColor, inkScale, brushSize);
       }
     } else {
       drawDot(ctx, inkStyle, px, py, pressure, selectedColor, inkScale, brushSize);
     }
-    lastPtRef.current = { px, py, pressure, color: selectedColor };
+    lastPtRef.current = { px, py, pressure, color: selectedColor, time: t };
 
-    // Update scratch sound with stroke speed
     if (soundOn) {
       const speed = Math.sqrt((px - (prev?.px || px)) ** 2 + (py - (prev?.py || py)) ** 2);
       updateScratch(speed);
     }
-  }, [getCoords, smoothCoords, selectedColor, inkStyle, brushSize, soundOn, updateScratch]);
+  };
+
+  const drawPt = (e: React.PointerEvent<HTMLCanvasElement>) =>
+    drawSample(e.clientX, e.clientY, e.pressure, e.pointerType, e.nativeEvent.timeStamp, (e as any).tiltX, (e as any).tiltY);
 
   // Object eraser: lift out any whole stroke the eraser passes over. It edits
   // the vector stroke data (not pixels), so the server re-render matches and
@@ -507,7 +523,16 @@ export function CanvasDraw({
       eraseAt(x, y);
       return;
     }
-    drawPt(e);
+    // Replay every sample the device buffered between frames (Apple Pencil emits
+    // far more than one per frame) for a line that tracks the pen exactly.
+    const ne = e.nativeEvent as PointerEvent;
+    const coalesced =
+      typeof ne.getCoalescedEvents === "function" && ne.getCoalescedEvents().length
+        ? ne.getCoalescedEvents()
+        : [ne];
+    for (const c of coalesced) {
+      drawSample(c.clientX, c.clientY, c.pressure, c.pointerType, c.timeStamp, (c as any).tiltX, (c as any).tiltY);
+    }
   };
 
   const handleUp = (e: React.PointerEvent<HTMLCanvasElement>) => {
