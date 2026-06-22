@@ -37,19 +37,20 @@ export default function RobinsPage() {
   };
   useEffect(() => { refresh(); }, []);
 
-  const submitSection = async (strokes: any[], durationMs: number, _paper: string, inkStyle: string) => {
+  const submitSection = async (pages: { strokes: any[]; inkStyle: string }[], durationMs: number) => {
     if (!writingFor) return;
     setSubmitting(true);
     setError("");
     try {
+      const page = pages[0]; // round-robin sections are single-page
       const url = writingFor === "new" ? "/api/robins" : `/api/robins/${writingFor.id}/sections`;
       const res = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          canvas_stroke_data: strokes,
+          canvas_stroke_data: page.strokes,
           drawing_duration_ms: durationMs,
-          ink_style: inkStyle,
+          ink_style: page.inkStyle,
         }),
       });
       const data = await res.json();

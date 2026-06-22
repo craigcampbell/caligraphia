@@ -1,5 +1,11 @@
 import { enforceNoTextInput } from "./no-text-input";
-import { INK_STYLES } from "./ink-engine";
+import { INK_STYLES, type StrokePoint } from "./ink-engine";
+import {
+  MAX_PAGES,
+  pageFillMetrics,
+  meetsExtraPageContent,
+  stripTrailingBlankPages,
+} from "./page-fill";
 
 const MIN_DRAW_TIME_MS = 15_000;
 // Comments are quick marginalia — keep the bar low but high enough to deter paste-bots.
@@ -94,6 +100,102 @@ export function validateCanvasPost(
 
 export function validateCommentStrokes(body: Record<string, unknown>): void {
   validateCanvasPost(body, MIN_COMMENT_DRAW_TIME_MS);
+}
+
+export interface ValidatedPage {
+  strokes: StrokePoint[];
+  inkStyle: string;
+  paper: string;
+}
+
+// Per-point validation for one page's strokes (bounds, colors, inks).
+function validateStrokePoints(strokes: unknown, label: string): StrokePoint[] {
+  if (!Array.isArray(strokes) || strokes.length < 1) {
+    throw new Error(`${label} must contain at least 1 stroke point`);
+  }
+  for (const point of strokes as Array<Record<string, unknown>>) {
+    if (typeof point.time !== "number" || point.time <= 0) {
+      throw new Error(`${label}: each point must have a valid time`);
+    }
+    if (typeof point.x !== "number" || point.x < 0 || point.x > 1) {
+      throw new Error(`${label}: x must be between 0 and 1`);
+    }
+    if (typeof point.y !== "number" || point.y < 0 || point.y > 1) {
+      throw new Error(`${label}: y must be between 0 and 1`);
+    }
+    if (typeof point.pressure !== "number" || point.pressure < 0 || point.pressure > 1) {
+      throw new Error(`${label}: pressure must be between 0 and 1`);
+    }
+    if (point.color !== undefined && !isHexColor(point.color)) {
+      throw new Error(`${label}: color must be a #rrggbb hex color`);
+    }
+    if (point.ink !== undefined && (typeof point.ink !== "string" || !ALLOWED_INK_IDS.has(point.ink))) {
+      throw new Error(`${label}: unsupported ink`);
+    }
+  }
+  return strokes as StrokePoint[];
+}
+
+// Validate a multi-page letter. Accepts the new { pages: [...] } shape OR the
+// legacy single-page shape (canvas_stroke_data on the body). The server is
+// authoritative: it strips trailing blank pages and re-checks every page so the
+// client can't slip in reams of empty sheets.
+export function validateMultiPageCanvasPost(
+  body: Record<string, unknown>,
+  minTotalDrawMs: number = MIN_DRAW_TIME_MS
+): ValidatedPage[] {
+  enforceNoTextInput(body);
+
+  const rawPages: Array<Record<string, unknown>> = Array.isArray(body.pages)
+    ? (body.pages as Array<Record<string, unknown>>)
+    : [{
+        canvas_stroke_data: body.canvas_stroke_data,
+        ink_style: body.ink_style,
+        paper: body.paper,
+      }];
+
+  if (rawPages.length < 1) throw new Error("A letter needs at least one page");
+  if (rawPages.length > MAX_PAGES) {
+    throw new Error(`A letter can have at most ${MAX_PAGES} pages`);
+  }
+
+  let pages: ValidatedPage[] = rawPages.map((p, i) => {
+    enforceNoTextInput(p);
+    const strokes = validateStrokePoints(p.canvas_stroke_data, `Page ${i + 1}`);
+    let inkStyle = "standard";
+    if (typeof p.ink_style === "string") {
+      if (!ALLOWED_INK_IDS.has(p.ink_style)) {
+        throw new Error(`Page ${i + 1}: unsupported ink_style`);
+      }
+      inkStyle = p.ink_style;
+    }
+    const paper = typeof p.paper === "string" ? p.paper : "blank";
+    return { strokes, inkStyle, paper };
+  });
+
+  // Trailing blank pages are dropped server-side regardless of the client.
+  pages = stripTrailingBlankPages(pages);
+  if (pages.length < 1) throw new Error("This letter has no real content");
+
+  // Total drawing time across pages must clear the anti-paste bar.
+  const totalDrawn = pages.reduce((sum, pg) => sum + pageFillMetrics(pg.strokes).drawnMs, 0);
+  const wall = typeof body.drawing_duration_ms === "number" ? body.drawing_duration_ms : 0;
+  const effective = Math.max(totalDrawn, wall);
+  if (effective < minTotalDrawMs) {
+    throw new Error(
+      `A letter must take at least ${minTotalDrawMs / 1000} seconds to write. ` +
+        `Yours was only ${(effective / 1000).toFixed(1)} seconds.`
+    );
+  }
+
+  // Every page after the first must independently earn its place.
+  for (let i = 1; i < pages.length; i++) {
+    if (!meetsExtraPageContent(pageFillMetrics(pages[i].strokes))) {
+      throw new Error(`Page ${i + 1} doesn't have enough writing to send — fill it or remove it.`);
+    }
+  }
+
+  return pages;
 }
 
 export function validateNativeCanvasPost(

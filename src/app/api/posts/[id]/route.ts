@@ -30,6 +30,9 @@ export async function GET(
         },
         orderBy: { createdAt: "asc" },
       },
+      pages: {
+        orderBy: { position: "asc" },
+      },
       _count: {
         select: {
           scratches: true,

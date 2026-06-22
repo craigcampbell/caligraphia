@@ -132,7 +132,21 @@ export default function PostDetailPage() {
 
         <div className="detail-image-wrapper">
           {imageUrl ? (
-            <img src={imageUrl} alt="" className="detail-image" />
+            <>
+              {post.pageCount > 1 && (
+                <div className="detail-page-label">Page 1 of {post.pageCount}</div>
+              )}
+              <img src={imageUrl} alt="" className="detail-image" />
+              {Array.isArray(post.pages) &&
+                post.pages.map((pg: any, i: number) =>
+                  pg.imageUrl ? (
+                    <div key={pg.id} className="detail-extra-page">
+                      <div className="detail-page-label">Page {i + 2} of {post.pageCount}</div>
+                      <img src={pg.imageUrl} alt="" className="detail-image" />
+                    </div>
+                  ) : null
+                )}
+            </>
           ) : (
             <div className="detail-no-image">No image available</div>
           )}
@@ -256,6 +270,11 @@ export default function PostDetailPage() {
           background: #fafafa;
           margin-bottom: 16px;
         }
+        .detail-page-label {
+          font-size: 12px; font-weight: 600; color: #8c7a60;
+          padding: 8px 12px; background: #f3ecdc; border-bottom: 1px solid #e0d5c0;
+        }
+        .detail-extra-page { border-top: 2px solid #e0d5c0; }
         .detail-image {
           width: 100%;
           max-height: 80vh;

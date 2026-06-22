@@ -12,6 +12,14 @@ export interface PostDtoInput {
   _count?: CountMap;
   scratches?: unknown[];
   comments?: unknown[];
+  pages?: unknown[];
+  pageCount?: number;
+}
+
+export interface PostPageDtoInput {
+  [key: string]: unknown;
+  id: string;
+  imageUrl?: string | null;
 }
 
 export interface CommentDtoInput {
@@ -44,11 +52,15 @@ export function serializePost<T extends PostDtoInput>(post: T) {
   const scratches = Array.isArray(post.scratches)
     ? post.scratches.map((scratch) => serializeScratch(scratch as ScratchDtoInput))
     : post.scratches;
+  const pages = Array.isArray(post.pages)
+    ? post.pages.map((page) => serializePostPage(page as PostPageDtoInput))
+    : post.pages;
 
   return {
     ...post,
     comments,
     scratches,
+    pages,
     imageUrl,
     finalImageUrl: post.finalImageUrl ? imageUrl : null,
     uploadedPhotoUrl: !post.finalImageUrl && post.uploadedPhotoUrl ? imageUrl : null,
@@ -90,6 +102,17 @@ export function serializeScratch<T extends ScratchDtoInput>(scratch: T) {
 
 export function serializeScratches<T extends ScratchDtoInput>(scratches: T[]) {
   return scratches.map(serializeScratch);
+}
+
+export function serializePostPage<T extends PostPageDtoInput>(page: T) {
+  return {
+    ...page,
+    imageUrl: page.imageUrl ? `/api/media/pages/${page.id}` : page.imageUrl ?? null,
+  };
+}
+
+export function serializePostPages<T extends PostPageDtoInput>(pages: T[]) {
+  return pages.map(serializePostPage);
 }
 
 export function serializeGuestbookEntry<T extends GuestbookEntryDtoInput>(entry: T) {

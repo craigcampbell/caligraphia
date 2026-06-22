@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { AuthGuard } from "@/components/AuthGuard";
 import { NavBar } from "@/components/NavBar";
 import { useAuth } from "@/hooks/useAuth";
-import { CanvasDraw } from "@/components/CanvasDraw";
+import { CanvasDraw, type CanvasPage } from "@/components/CanvasDraw";
 import { LetterEnvelope } from "@/components/LetterEnvelope";
 import { PhotoUpload } from "@/components/PhotoUpload";
 import { UserSearch } from "@/components/UserSearch";
@@ -41,10 +41,8 @@ function NewPostContent() {
   const [requestOf, setRequestOf] = useState<Recipient | null>(null);
   const [fulfillReq, setFulfillReq] = useState<{ id: string; requester: Recipient } | null>(null);
   const [renderResult, setRenderResult] = useState<{
-    strokes: any[];
+    pages: CanvasPage[];
     durationMs: number;
-    paper: string;
-    inkStyle: string;
     imageUrl?: string;
   } | null>(null);
   const [envelopeResult, setEnvelopeResult] = useState<{
@@ -116,7 +114,10 @@ function NewPostContent() {
     })();
   }, [searchParams]);
 
-  const handleCanvasComplete = async (strokes: any[], drawingDurationMs: number, paper: string, inkStyle: string) => {
+  const pagesToBody = (pages: CanvasPage[]) =>
+    pages.map((p) => ({ canvas_stroke_data: p.strokes, ink_style: p.inkStyle, paper: p.paper }));
+
+  const handleCanvasComplete = async (pages: CanvasPage[], drawingDurationMs: number) => {
     setSubmitting(true);
     setError("");
 
@@ -127,10 +128,8 @@ function NewPostContent() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            canvas_stroke_data: strokes,
+            pages: pagesToBody(pages),
             drawing_duration_ms: drawingDurationMs,
-            paper,
-            ink_style: inkStyle,
             request_of: requestOf.id,
           }),
         });
@@ -150,7 +149,7 @@ function NewPostContent() {
 
     // Postcards skip the envelope ceremony: straight to addressing
     if (mode === "postcard") {
-      setRenderResult({ strokes, durationMs: drawingDurationMs, paper, inkStyle });
+      setRenderResult({ pages, durationMs: drawingDurationMs });
       setStep("send");
       setSubmitting(false);
       return;
@@ -161,16 +160,14 @@ function NewPostContent() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          canvas_stroke_data: strokes,
+          pages: pagesToBody(pages),
           drawing_duration_ms: drawingDurationMs,
-          paper,
-          ink_style: inkStyle,
           preview_only: true,
         }),
       });
       const data = await res.json();
       if (res.ok) {
-        setRenderResult({ strokes, durationMs: drawingDurationMs, paper, inkStyle, imageUrl: data.imageUrl });
+        setRenderResult({ pages, durationMs: drawingDurationMs, imageUrl: data.imageUrl });
         setStep("seal");
       } else {
         setError(data.error || "Failed to render letter");
@@ -198,10 +195,8 @@ function NewPostContent() {
     setError("");
     try {
       const body: Record<string, any> = {
-        canvas_stroke_data: renderResult.strokes,
+        pages: pagesToBody(renderResult.pages),
         drawing_duration_ms: renderResult.durationMs,
-        paper: renderResult.paper,
-        ink_style: renderResult.inkStyle,
       };
       if (envelope) {
         body.envelope_data = envelope.envelopeData;
@@ -314,7 +309,7 @@ function NewPostContent() {
             <button onClick={() => { setMode("choose"); setStep("draw"); }} className="back-btn">
               &larr; Back
             </button>
-            <CanvasDraw onComplete={handleCanvasComplete} onCancel={() => { setMode("choose"); setStep("draw"); }} />
+            <CanvasDraw onComplete={handleCanvasComplete} onCancel={() => { setMode("choose"); setStep("draw"); }} maxPages={5} />
           </div>
         )}
 

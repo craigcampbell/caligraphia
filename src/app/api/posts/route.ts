@@ -6,7 +6,7 @@ import { renderCanvasToPng, renderPostcardToPng, type StrokePoint } from "@/lib/
 import { sendLetterArrivedEmail } from "@/lib/email";
 import { extractOcrFromImage } from "@/lib/ocr";
 import { enforceNoTextInput } from "@/lib/no-text-input";
-import { validateCanvasPost, validateNativeCanvasPost } from "@/lib/validation";
+import { validateCanvasPost, validateNativeCanvasPost, validateMultiPageCanvasPost } from "@/lib/validation";
 import { rateLimitPostCreation } from "@/lib/rate-limit";
 import { groupHashtagLiterals } from "@/lib/tags";
 import { attachLetterToExchange } from "@/lib/exchange";
@@ -82,10 +82,18 @@ export async function POST(request: Request) {
 
   if (contentType.includes("application/json")) {
     const body = await request.json();
-    if (typeof body === "object" && body && "native_drawing_data_base64" in body) {
-      return handleNativeCanvasPost(body as Record<string, unknown>, session);
+    try {
+      if (typeof body === "object" && body && "native_drawing_data_base64" in body) {
+        return await handleNativeCanvasPost(body as Record<string, unknown>, session);
+      }
+      return await handleCanvasPost(body as Record<string, unknown>, session);
+    } catch (err) {
+      // Validation failures (bad/blank pages, too many pages, text input, etc.)
+      // surface as a clean 400 with the reason instead of an empty 500.
+      const message = err instanceof Error ? err.message : "Could not save this letter";
+      console.error("Post creation failed:", message);
+      return NextResponse.json({ error: message }, { status: 400 });
     }
-    return handleCanvasPost(body as Record<string, unknown>, session);
   } else if (contentType.includes("multipart/form-data")) {
     return handlePhotoPost(request, session);
   }
@@ -103,12 +111,43 @@ async function handleCanvasPost(body: Record<string, unknown>, session: { userId
   enforceNoTextInput(body);
 
   const format = body.format === "postcard" ? "postcard" : "letter";
-  validateCanvasPost(body, format === "postcard" ? POSTCARD_MIN_DRAW_MS : undefined);
-
-  const strokeData = body.canvas_stroke_data as StrokePoint[];
-  const paper = (body.paper as string) || "blank";
-  const inkStyle = (body.ink_style as string) || "standard";
   const previewOnly = body.preview_only === true;
+
+  // The envelope preview only shows the cover (page 0). Render just that and
+  // skip the full multi-page validation — a 2-page letter's content can be
+  // spread across pages, so page 0 alone need not clear the 15s total.
+  if (previewOnly) {
+    const p0 = Array.isArray(body.pages)
+      ? (body.pages[0] as Record<string, unknown> | undefined)
+      : body;
+    const p0Strokes = p0?.canvas_stroke_data as StrokePoint[] | undefined;
+    if (!Array.isArray(p0Strokes) || p0Strokes.length < 1) {
+      return NextResponse.json({ error: "Nothing to preview yet" }, { status: 400 });
+    }
+    const p0Paper = (p0?.paper as string) || "blank";
+    const p0Ink = (p0?.ink_style as string) || "standard";
+    const sharpLib = (await import("sharp")).default;
+    const png =
+      format === "postcard"
+        ? await renderPostcardToPng(p0Strokes, p0Paper, p0Ink)
+        : await renderCanvasToPng(p0Strokes, p0Paper, p0Ink);
+    const previewBuffer = await sharpLib(png)
+      .resize({ width: 1000, withoutEnlargement: true })
+      .png({ quality: 70 })
+      .toBuffer();
+    return NextResponse.json({ imageUrl: `data:image/png;base64,${previewBuffer.toString("base64")}` });
+  }
+
+  // Full submit: validate EVERY page server-side (authoritative — strips blank
+  // tails, caps page count, re-checks per-page content). Page 0 is the cover.
+  const pages = validateMultiPageCanvasPost(
+    body,
+    format === "postcard" ? POSTCARD_MIN_DRAW_MS : undefined
+  );
+  const page0 = pages[0];
+  const strokeData = page0.strokes;
+  const paper = page0.paper;
+  const inkStyle = page0.inkStyle;
   const envelopeData = body.envelope_data || null;
   const signatureData = body.signature_data || null;
   const recipientId = (body.recipient_id as string) || null;
@@ -150,57 +189,67 @@ async function handleCanvasPost(body: Record<string, unknown>, session: { userId
     }
   }
 
-  // Render the letter (or postcard) to PNG
   const sharp = (await import("sharp")).default;
-  const pngBuffer =
+
+  // Page 0 (the cover): becomes post.finalImageUrl and the OCR source.
+  const page0Png =
     format === "postcard"
       ? await renderPostcardToPng(strokeData, paper, inkStyle)
       : await renderCanvasToPng(strokeData, paper, inkStyle);
+  const page0Compressed = await sharp(page0Png).png({ quality: 85 }).toBuffer();
+  const imageUrl = await uploadBuffer(`posts/${uuidv4()}.png`, page0Compressed, "image/png");
 
-  if (previewOnly) {
-    // Hand the preview straight back as a data URL (the browser can't reach
-    // MinIO directly behind the tunnel). Keep it SMALL: a full-res base64 string
-    // held in React state next to the big canvas was enough to make iOS Safari
-    // reload the page mid-flow. The envelope only shows it small, and the final
-    // send re-renders at full resolution, so a downscaled preview is plenty.
-    const previewBuffer = await sharp(pngBuffer)
-      .resize({ width: 1000, withoutEnlargement: true })
-      .png({ quality: 70 })
-      .toBuffer();
-    const dataUrl = `data:image/png;base64,${previewBuffer.toString("base64")}`;
-    return NextResponse.json({ imageUrl: dataUrl });
-  }
+  // Extra pages 1..N-1 (letters only; postcards are single-page). Render and
+  // upload in parallel — each writes a distinct key, so this is safe.
+  const extraPageUrls = await Promise.all(
+    pages.slice(1).map(async (pg) => {
+      const png = await renderCanvasToPng(pg.strokes, pg.paper, pg.inkStyle);
+      const compressed = await sharp(png).png({ quality: 85 }).toBuffer();
+      return uploadBuffer(`post-pages/${uuidv4()}.png`, compressed, "image/png");
+    })
+  );
 
-  // Full post: compress and store the final image
-  const compressedBuffer = await sharp(pngBuffer).png({ quality: 85 }).toBuffer();
-  const imageKey = `posts/${uuidv4()}.png`;
-  const imageUrl = await uploadBuffer(imageKey, compressedBuffer, "image/png");
+  // OCR the cover only (Tesseract is the slow step; tags live on page 1).
+  const { text, hashtags } = await extractOcrFromImage(page0Png);
 
-  // Run OCR
-  const { text, hashtags } = await extractOcrFromImage(pngBuffer);
-
-  // Create the post
-  const post = await prisma.post.create({
-    data: {
-      userId: session.userId,
-      postType: "canvas",
-      canvasStrokeData: strokeData as unknown as object,
-      paperType: paper,
-      inkStyle: inkStyle,
-      finalImageUrl: imageUrl,
-      envelopeData: envelopeData ? (envelopeData as unknown as object) : undefined,
-      signatureData: signatureData ? (signatureData as unknown as object) : undefined,
-      recipientId: isDeadLetter ? undefined : recipientId || undefined,
-      isPrivate: isPrivate,
-      format,
-      deliverAt: deliverAt || undefined,
-      isDeadLetter,
-      ocrText: text,
-      ocrHashtags: hashtags,
-    },
-    include: {
-      user: { select: { id: true, username: true, nomDePlume: true } },
-    },
+  // Create the post and its extra pages atomically.
+  const post = await prisma.$transaction(async (tx) => {
+    const created = await tx.post.create({
+      data: {
+        userId: session.userId,
+        postType: "canvas",
+        canvasStrokeData: strokeData as unknown as object,
+        paperType: paper,
+        inkStyle: inkStyle,
+        finalImageUrl: imageUrl,
+        pageCount: pages.length,
+        envelopeData: envelopeData ? (envelopeData as unknown as object) : undefined,
+        signatureData: signatureData ? (signatureData as unknown as object) : undefined,
+        recipientId: isDeadLetter ? undefined : recipientId || undefined,
+        isPrivate: isPrivate,
+        format,
+        deliverAt: deliverAt || undefined,
+        isDeadLetter,
+        ocrText: text,
+        ocrHashtags: hashtags,
+      },
+      include: {
+        user: { select: { id: true, username: true, nomDePlume: true } },
+      },
+    });
+    for (let i = 0; i < extraPageUrls.length; i++) {
+      await tx.postPage.create({
+        data: {
+          postId: created.id,
+          position: i + 1,
+          strokeData: pages[i + 1].strokes as unknown as object,
+          inkStyle: pages[i + 1].inkStyle,
+          paperType: pages[i + 1].paper,
+          imageUrl: extraPageUrls[i],
+        },
+      });
+    }
+    return created;
   });
 
   if (recipientId && !isDeadLetter) {

@@ -15,6 +15,12 @@ import {
   type InkId,
   type StrokePoint,
 } from "@/lib/ink-engine";
+import {
+  pageFillMetrics,
+  meetsAddPageGate,
+  isNearBottom,
+  isNearBlankPage,
+} from "@/lib/page-fill";
 
 const DEFAULT_W = 2400;
 const DEFAULT_H = 3200;
@@ -36,8 +42,14 @@ const INK_COLORS = [
   "#d4af37", "#b8860b", "#fff1a8", "#e8e8f0",
 ];
 
+export interface CanvasPage {
+  strokes: StrokePoint[];
+  paper: PaperId;
+  inkStyle: InkId;
+}
+
 interface Props {
-  onComplete: (strokes: StrokePoint[], drawingDurationMs: number, paper: PaperId, inkStyle: InkId) => void;
+  onComplete: (pages: CanvasPage[], drawingDurationMs: number) => void;
   onCancel: () => void;
   minDrawTimeMs?: number;
   // Canvas size in drawing units — letters are 2400x3200, postcards and
@@ -45,6 +57,9 @@ interface Props {
   canvasW?: number;
   canvasH?: number;
   submitLabel?: string;
+  // Max pages this composer allows. Default 1 keeps every existing caller
+  // single-page; letters pass a higher cap to enable the page bar.
+  maxPages?: number;
 }
 
 function drawPaper(ctx: CanvasRenderingContext2D, paper: PaperId, w: number, h: number) {
@@ -112,6 +127,7 @@ export function CanvasDraw({
   canvasW = DEFAULT_W,
   canvasH = DEFAULT_H,
   submitLabel,
+  maxPages = 1,
 }: Props) {
   const inkScale = canvasW / REFERENCE_WIDTH;
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -154,13 +170,24 @@ export function CanvasDraw({
   const [soundOn, setSoundOn] = useState(false);
   const { startScratch, updateScratch, stopScratch, enable, disable } = usePenSounds(paper, inkStyle);
 
-  const strokesRef = useRef<StrokePoint[]>([]);
+  // Multi-page: each page is its own stroke array. strokesRef / strokeStartsRef
+  // always POINT AT the current page's arrays, so every existing drawing handler
+  // keeps working unchanged — we just swap which arrays they point to.
+  const pagesRef = useRef<StrokePoint[][]>([[]]);
+  const pageStartsRef = useRef<number[][]>([[]]);
+  const pageIndexRef = useRef(0);
+  const [pageIndex, setPageIndex] = useState(0);
+  const [pageCount, setPageCount] = useState(1);
+  const nudgedPagesRef = useRef<Set<number>>(new Set());
+  const [nearBottom, setNearBottom] = useState(false);
+
+  const strokesRef = useRef<StrokePoint[]>(pagesRef.current[0]);
   const firstStrokeTimeRef = useRef<number | null>(null);
   const lastPtRef = useRef<{ px: number; py: number; pressure: number; color: string; time: number } | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Stroke boundaries (indexes into strokesRef) so the last stroke can be undone
-  const strokeStartsRef = useRef<number[]>([]);
+  const strokeStartsRef = useRef<number[]>(pageStartsRef.current[0]);
   const [strokeCount, setStrokeCount] = useState(0);
 
   // Palm rejection: once a stylus is seen, finger touches are ignored, and
@@ -268,6 +295,41 @@ export function CanvasDraw({
     drawPaper(ctx, paper, canvasW, canvasH);
     reseed(DEFAULT_INK_SEED);
     renderStrokes(ctx, strokesRef.current, inkStyle, canvasW, canvasH);
+  };
+
+  // ---- Multi-page navigation ----
+  // Capture the current page's live arrays back into the page store (erase/undo
+  // reassign strokesRef.current, so re-point before switching or submitting).
+  const flushCurrentPage = () => {
+    pagesRef.current[pageIndexRef.current] = strokesRef.current;
+    pageStartsRef.current[pageIndexRef.current] = strokeStartsRef.current;
+  };
+
+  const goToPage = (i: number) => {
+    if (i < 0 || i >= pagesRef.current.length) return;
+    flushCurrentPage();
+    pageIndexRef.current = i;
+    setPageIndex(i);
+    strokesRef.current = pagesRef.current[i];
+    strokeStartsRef.current = pageStartsRef.current[i];
+    setStrokeCount(strokeStartsRef.current.length);
+    setNearBottom(false);
+    lastPtRef.current = null;
+    smoothedRef.current = null;
+    resetView(); // land at the top of the fresh page, fit-to-width
+    const ctx = ctxRef.current;
+    if (ctx) redraw(ctx);
+  };
+
+  const currentPageFilled = () => meetsAddPageGate(pageFillMetrics(strokesRef.current));
+
+  const addPage = () => {
+    flushCurrentPage();
+    if (pagesRef.current.length >= maxPages || !currentPageFilled()) return;
+    pagesRef.current.push([]);
+    pageStartsRef.current.push([]);
+    setPageCount(pagesRef.current.length);
+    goToPage(pagesRef.current.length - 1);
   };
 
   const startTimer = () => {
@@ -557,6 +619,20 @@ export function CanvasDraw({
     lastPtRef.current = null;
     smoothedRef.current = null;
     if (soundOn) stopScratch();
+
+    // Multi-page: once the writer reaches the bottom of a page, nudge them
+    // (once per page) that they can add another.
+    if (
+      maxPages > 1 &&
+      tool === "pen" &&
+      pagesRef.current.length < maxPages &&
+      !nudgedPagesRef.current.has(pageIndexRef.current) &&
+      isNearBottom(pageFillMetrics(strokesRef.current))
+    ) {
+      nudgedPagesRef.current.add(pageIndexRef.current);
+      setNearBottom(true);
+      setHint("You're near the bottom — add a page when you're ready.");
+    }
   };
 
   // Undo the most recent stroke. Pen plotters get no undo; humans on phones do.
@@ -572,9 +648,16 @@ export function CanvasDraw({
 
   const handleSubmit = () => {
     if (!canSubmit) return;
-    if (strokesRef.current.length < 1) return;
+    flushCurrentPage();
+    // All pages share the current paper/ink for now (one sheet of stationery).
+    const pages: CanvasPage[] = pagesRef.current.map((strokes) => ({ strokes, paper, inkStyle }));
+    // Drop trailing near-blank pages so a blank tail is never sent.
+    while (pages.length > 1 && isNearBlankPage(pageFillMetrics(pages[pages.length - 1].strokes))) {
+      pages.pop();
+    }
+    if (pages.length === 0 || pages[0].strokes.length < 1) return;
     const dur = firstStrokeTimeRef.current ? Date.now() - firstStrokeTimeRef.current : 0;
-    onComplete(strokesRef.current, dur, paper, inkStyle);
+    onComplete(pages, dur);
   };
 
   // Drop a random ink splatter on the canvas
@@ -769,6 +852,34 @@ export function CanvasDraw({
         </div>
       </div>
 
+      {maxPages > 1 && (
+        <div className="page-bar notranslate" translate="no">
+          <button
+            className="page-nav-btn"
+            onClick={() => goToPage(pageIndex - 1)}
+            disabled={pageIndex === 0}
+            aria-label="Previous page"
+          >&#8249;</button>
+          <span className="page-indicator">Page {pageIndex + 1} / {pageCount}</span>
+          <button
+            className="page-nav-btn"
+            onClick={() => goToPage(pageIndex + 1)}
+            disabled={pageIndex >= pageCount - 1}
+            aria-label="Next page"
+          >&#8250;</button>
+          <button
+            className={`page-add-btn ${nearBottom ? "pulse" : ""}`}
+            onClick={addPage}
+            disabled={pageCount >= maxPages || !meetsAddPageGate(pageFillMetrics(strokesRef.current))}
+            title={
+              pageCount >= maxPages
+                ? `A letter can have at most ${maxPages} pages`
+                : "Fill more of this page before you can add another"
+            }
+          >+ Add page</button>
+        </div>
+      )}
+
       <div className="canvas-actions">
         <button onClick={onCancel} className="btn-cancel">Discard</button>
         <button onClick={handleUndo} className="btn-undo" disabled={strokeCount === 0} title="Undo last stroke">
@@ -953,6 +1064,30 @@ export function CanvasDraw({
           font-size: 12px; font-weight: 600; color: #5c4a30; border-radius: 7px; font-family: inherit;
         }
         .zoom-pct:hover { background: rgba(0,0,0,0.06); }
+        .page-bar {
+          display: flex; align-items: center; justify-content: center; gap: 10px;
+          width: 100%; padding: 2px 0;
+        }
+        .page-nav-btn {
+          width: 34px; height: 34px; border: 1px solid #d0c8b8; border-radius: 8px;
+          background: #fefdf9; cursor: pointer; font-size: 18px; line-height: 1; color: #5c4a30;
+          font-family: inherit;
+        }
+        .page-nav-btn:hover:not(:disabled) { border-color: #8b4513; }
+        .page-nav-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+        .page-indicator { font-size: 13px; font-weight: 600; color: #5c4a30; min-width: 92px; text-align: center; }
+        .page-add-btn {
+          padding: 7px 16px; border: 1px solid #d0c8b8; border-radius: 8px;
+          background: #fefdf9; cursor: pointer; font-size: 13px; font-weight: 600;
+          color: #5c4a30; font-family: inherit; margin-left: 6px;
+        }
+        .page-add-btn:hover:not(:disabled) { border-color: #8b4513; color: #8b4513; }
+        .page-add-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+        .page-add-btn.pulse:not(:disabled) {
+          border-color: #8b4513; color: #8b4513; background: #fef6ee;
+          animation: page-pulse 1.4s ease-in-out infinite;
+        }
+        @keyframes page-pulse { 0%,100% { box-shadow: 0 0 0 0 rgba(139,69,19,0.0); } 50% { box-shadow: 0 0 0 4px rgba(139,69,19,0.12); } }
         .canvas-actions { display: flex; gap: 14px; padding: 6px 0 20px; }
         .btn-cancel { padding: 12px 32px; border: 1px solid #ccc; border-radius: 8px; background: #fff; cursor: pointer; font-size: 15px; font-weight: 500; font-family: inherit; }
         .btn-cancel:hover { background: #f8f5f0; }

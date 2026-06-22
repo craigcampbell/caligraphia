@@ -36,23 +36,22 @@ function InviteContent() {
   };
 
   const handleComplete = async (
-    strokes: unknown[],
-    drawingDurationMs: number,
-    paper: string,
-    inkStyle: string
+    pages: { strokes: unknown[]; paper: string; inkStyle: string }[],
+    drawingDurationMs: number
   ) => {
     setSubmitting(true);
     setError("");
     try {
+      const page = pages[0]; // invitations are a single postcard
       const res = await fetch("/api/invites", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           email: email.trim(),
-          canvas_stroke_data: strokes,
+          canvas_stroke_data: page.strokes,
           drawing_duration_ms: drawingDurationMs,
-          paper,
-          ink_style: inkStyle,
+          paper: page.paper,
+          ink_style: page.inkStyle,
         }),
       });
       const data = await res.json();

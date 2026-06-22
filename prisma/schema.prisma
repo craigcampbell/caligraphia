@@ -78,6 +78,9 @@ model Post {
   isPrivate          Boolean   @default(false) @map("is_private")
   needsReview        Boolean   @default(false) @map("needs_review")
   format             String    @default("letter") // letter | postcard
+  // Multi-page letters: page 0 lives on this row (finalImageUrl / canvasStrokeData);
+  // pages 1..N-1 are PostPage rows. pageCount is the total including page 0.
+  pageCount          Int       @default(1) @map("page_count")
   // Slow post: hidden from the recipient until this moment passes
   deliverAt          DateTime? @map("deliver_at")
   // Dead Letter Office: written to no one, waiting to be claimed
@@ -92,6 +95,7 @@ model Post {
   scratches    Scratch[]
   flags        Flag[]
   stamps       Stamp[]
+  pages        PostPage[]
   replies      Reply[]           @relation("ParentPost")
   childReplies Reply[]           @relation("ChildPost")
   marginalia   Marginalium[]
@@ -337,6 +341,25 @@ model Marginalium {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("marginalia")
+}
+
+// Additional pages of a multi-page letter. Page 0 lives on the Post itself
+// (finalImageUrl + canvasStrokeData); these rows are positions 1..N-1.
+model PostPage {
+  id         String   @id @default(uuid()) @db.Uuid
+  postId     String   @map("post_id") @db.Uuid
+  position   Int
+  strokeData Json     @map("stroke_data")
+  inkStyle   String   @default("standard") @map("ink_style")
+  paperType  String?  @map("paper_type")
+  imageUrl   String   @map("image_url")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@unique([postId, position])
+  @@index([postId, position])
+  @@map("post_pages")
 }
 
 enum InviteStatus {

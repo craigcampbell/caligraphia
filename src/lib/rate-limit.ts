@@ -22,7 +22,9 @@ export function rateLimit(
 }
 
 export function rateLimitPostCreation(userId: string) {
-  return rateLimit(`post:${userId}`, 1, 30_000);
+  // Relaxed for a small community: up to 5 letters per minute. The 1-per-30s
+  // cap was tripping people who drew two letters in a row.
+  return rateLimit(`post:${userId}`, 5, 60_000);
 }
 
 export function rateLimitInteraction(userId: string) {
