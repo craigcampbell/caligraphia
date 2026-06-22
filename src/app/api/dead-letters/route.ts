@@ -37,7 +37,7 @@ export async function POST() {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
 
-  const rl = rateLimit(`dlo:${session.userId}`, 2, 60 * 60_000);
+  const rl = rateLimit(`dlo:${session.userId}`, 6, 60 * 60_000);
   if (!rl.allowed) {
     return NextResponse.json(
       { error: "The clerk eyes you suspiciously. Come back in a while." },

@@ -64,7 +64,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
 
-  const rl = rateLimit(`robin:${session.userId}`, 3, 10 * 60_000);
+  const rl = rateLimit(`robin:${session.userId}`, 8, 10 * 60_000);
   if (!rl.allowed) {
     return NextResponse.json(
       { error: `Rate limited. Try again in ${rl.retryAfter}s` },

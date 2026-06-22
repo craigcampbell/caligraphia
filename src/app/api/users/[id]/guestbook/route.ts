@@ -52,7 +52,7 @@ export async function POST(
     );
   }
 
-  const rl = rateLimit(`guestbook:${session.userId}`, 4, 60_000);
+  const rl = rateLimit(`guestbook:${session.userId}`, 12, 60_000);
   if (!rl.allowed) {
     return NextResponse.json(
       { error: `Rate limited. Try again in ${rl.retryAfter}s` },

@@ -18,7 +18,7 @@ export async function POST(request: Request) {
     }
 
     const normalized = email.trim().toLowerCase();
-    const rl = rateLimit(`magic-link:${normalized}`, 3, 10 * 60_000);
+    const rl = rateLimit(`magic-link:${normalized}`, 6, 10 * 60_000);
     if (!rl.allowed) {
       return NextResponse.json(
         { error: `Too many login attempts. Try again in ${rl.retryAfter}s` },
