@@ -6,6 +6,7 @@ import { AuthGuard } from "@/components/AuthGuard";
 import { NavBar } from "@/components/NavBar";
 import { StampButton } from "@/components/StampButton";
 import { ScratchOverlay } from "@/components/ScratchOverlay";
+import { ReportButton } from "@/components/ReportButton";
 import { Postscripts } from "@/components/Postscripts";
 import { useAuth } from "@/hooks/useAuth";
 import Link from "next/link";
@@ -122,10 +123,12 @@ export default function PostDetailPage() {
             >
               Scratch
             </button>
-            {isOwner && (
+            {isOwner ? (
               <button onClick={handleDelete} className="btn-delete">
                 Delete
               </button>
+            ) : (
+              <ReportButton targetType="post" targetId={post.id} />
             )}
           </div>
         </div>

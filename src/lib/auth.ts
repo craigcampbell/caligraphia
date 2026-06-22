@@ -26,6 +26,8 @@ const SESSION_EXPIRY = "7d";
 export interface SessionPayload {
   userId: string;
   username: string;
+  // Bumped on ban/unban to invalidate a user's existing sessions immediately.
+  epoch?: number;
 }
 
 export interface MagicLinkPayload {
@@ -37,7 +39,7 @@ export function signMagicToken(email: string): string {
 }
 
 export function verifyMagicToken(token: string): MagicLinkPayload {
-  return jwt.verify(token, magicLinkSecret()) as MagicLinkPayload;
+  return jwt.verify(token, magicLinkSecret(), { algorithms: ["HS256"] }) as MagicLinkPayload;
 }
 
 export function signSessionToken(payload: SessionPayload): string {
@@ -45,7 +47,7 @@ export function signSessionToken(payload: SessionPayload): string {
 }
 
 export function verifySessionToken(token: string): SessionPayload {
-  return jwt.verify(token, jwtSecret()) as SessionPayload;
+  return jwt.verify(token, jwtSecret(), { algorithms: ["HS256"] }) as SessionPayload;
 }
 
 export async function setSessionCookie(payload: SessionPayload): Promise<void> {
@@ -70,9 +72,32 @@ export async function getSession(): Promise<SessionPayload | null> {
       where: { id: payload.userId },
     });
     if (!user) return null;
-    return { userId: user.id, username: user.username };
+    // Banned users are locked out, and a session-epoch mismatch (set by a
+    // ban/unban) invalidates older tokens. `?? 0` keeps pre-migration tokens
+    // valid so a deploy doesn't log everyone out.
+    if (user.bannedAt) return null;
+    if ((payload.epoch ?? 0) !== user.sessionEpoch) return null;
+    return { userId: user.id, username: user.username, epoch: user.sessionEpoch };
   } catch {
     return null;
+  }
+}
+
+// Lightweight session state for the /banned page (status only, no secrets).
+export async function getSessionState(): Promise<
+  { status: "anon" } | { status: "banned"; banReason: string | null } | { status: "ok"; userId: string }
+> {
+  const store = await cookies();
+  const token = store.get(SESSION_COOKIE)?.value;
+  if (!token) return { status: "anon" };
+  try {
+    const payload = verifySessionToken(token);
+    const user = await prisma.user.findUnique({ where: { id: payload.userId } });
+    if (!user) return { status: "anon" };
+    if (user.bannedAt) return { status: "banned", banReason: user.banReason };
+    return { status: "ok", userId: user.id };
+  } catch {
+    return { status: "anon" };
   }
 }
 

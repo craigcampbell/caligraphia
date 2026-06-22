@@ -27,6 +27,12 @@ export function rateLimitPostCreation(userId: string) {
   return rateLimit(`post:${userId}`, 5, 60_000);
 }
 
+// In-memory pre-filter for admin login (cheap; the DB per-account lockout is the
+// authoritative control). Keyed by best-effort IP.
+export function rateLimitAdminLogin(ip: string) {
+  return rateLimit(`admin-login:${ip}`, 10, 60_000);
+}
+
 export function rateLimitInteraction(userId: string) {
   return rateLimit(`interact:${userId}`, 10, 10_000);
 }

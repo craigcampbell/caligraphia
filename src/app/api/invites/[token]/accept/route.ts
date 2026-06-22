@@ -73,6 +73,7 @@ export async function POST(
     await setSessionCookie({
       userId: existing.id,
       username: existing.username,
+      epoch: existing.sessionEpoch,
     });
     return NextResponse.json({ redirect: "/" });
   }

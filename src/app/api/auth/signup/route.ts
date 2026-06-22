@@ -133,6 +133,7 @@ export async function POST(request: Request) {
     await setSessionCookie({
       userId: user.id,
       username: user.username,
+      epoch: user.sessionEpoch,
     });
 
     return NextResponse.json({
