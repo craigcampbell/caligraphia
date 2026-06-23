@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { canViewPost } from "@/lib/post-access";
+import { canViewPost, canThrowAwayPost } from "@/lib/post-access";
 import { serializePost } from "@/lib/post-dto";
 
 export async function GET(
@@ -55,6 +55,13 @@ export async function GET(
     },
   });
 
+  // Opening a letter you received seals its "read" — it moves to the read pile.
+  if (post.recipientId === session.userId && !post.readAt) {
+    const now = new Date();
+    await prisma.post.update({ where: { id: post.id }, data: { readAt: now } }).catch(() => {});
+    post.readAt = now;
+  }
+
   return NextResponse.json({
     post: serializePost({ ...post, stamped: !!userStamp }),
   });
@@ -74,8 +81,16 @@ export async function DELETE(
     return NextResponse.json({ error: "Post not found" }, { status: 404 });
   }
 
-  if (post.userId !== session.userId) {
-    return NextResponse.json({ error: "Not authorized" }, { status: 403 });
+  if (!canThrowAwayPost(post, session.userId)) {
+    // The author of a letter that's already been sent gets a clear explanation;
+    // anyone else who isn't a party to it gets a uniform 404 (no existence oracle).
+    if (post.userId === session.userId) {
+      return NextResponse.json(
+        { error: "Once a letter has been sent, only the person who received it can throw it away." },
+        { status: 403 }
+      );
+    }
+    return NextResponse.json({ error: "Post not found" }, { status: 404 });
   }
 
   await prisma.post.update({

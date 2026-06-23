@@ -34,3 +34,23 @@ export function canViewPost(
 
   return true;
 }
+
+export interface ThrowAwayFields {
+  userId: string;
+  recipientId: string | null;
+  deletedAt: Date | string | null;
+}
+
+// Who may throw a letter away (soft-delete it):
+//  - A letter addressed to no one (public post / unclaimed dead letter) can be
+//    discarded by its author.
+//  - A letter sent to someone becomes the recipient's to keep or discard; once
+//    sent, the author can no longer throw it away.
+export function canThrowAwayPost(
+  post: ThrowAwayFields | null | undefined,
+  userId: string | null | undefined
+): boolean {
+  if (!post || post.deletedAt || !userId) return false;
+  if (post.recipientId == null) return post.userId === userId;
+  return post.recipientId === userId;
+}

@@ -208,6 +208,33 @@ export async function compositeRobin(sectionPngs: Buffer[]): Promise<Buffer> {
     .toBuffer();
 }
 
+// A "write back on the same sheet" reply: draw the recipient's ink directly over
+// the original letter. The base image becomes the canvas background, then the new
+// strokes are rendered on top with the real ink engine (same path as composing).
+export async function renderReplyOnSheet(
+  baseImageUrl: string,
+  strokes: StrokePoint[],
+  inkStyle: string = "standard",
+  width: number = CANVAS_WIDTH,
+  height: number = CANVAS_HEIGHT
+): Promise<Buffer> {
+  const { createCanvas, loadImage } = await import("@napi-rs/canvas");
+  const canvas = createCanvas(width, height);
+  const ctx = canvas.getContext("2d");
+
+  const { buffer: baseBuffer } = await getObjectBuffer(baseImageUrl);
+  // Normalise to the canvas dimensions so normalized stroke coords line up.
+  const fitted = await sharp(baseBuffer)
+    .resize(width, height, { fit: "fill" })
+    .toFormat("png")
+    .toBuffer();
+  const baseImage = await loadImage(fitted);
+  ctx.drawImage(baseImage, 0, 0, width, height);
+
+  renderStrokes(ctx, strokes, inkStyle, width, height);
+  return canvas.toBuffer("image/png");
+}
+
 export async function compositeScratchOverlay(
   baseImageUrl: string,
   scratchSvgData: string

@@ -3,6 +3,9 @@ import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { serializePosts } from "@/lib/post-dto";
 
+// The postbox: private letters delivered to the current user. Returns each
+// letter's readAt so the client can split them into unopened vs. read piles,
+// plus a true unread count (sealed letters only).
 export async function GET(request: Request) {
   const session = await getSession();
   if (!session) {
@@ -10,43 +13,35 @@ export async function GET(request: Request) {
   }
 
   const { searchParams } = new URL(request.url);
-  const cursor = searchParams.get("cursor");
-  const limit = Math.min(parseInt(searchParams.get("limit") || "20", 10), 50);
+  const limit = Math.min(parseInt(searchParams.get("limit") || "200", 10), 300);
 
-  // Private letters sent to the current user, minus any still in transit
+  // Hide anything still in transit (slow post not yet delivered).
   const delivered = {
     OR: [{ deliverAt: null }, { deliverAt: { lte: new Date() } }],
   };
-  const posts = await prisma.post.findMany({
-    where: {
-      recipientId: session.userId,
-      deletedAt: null,
-      ...delivered,
-    },
-    include: {
-      user: { select: { id: true, username: true, nomDePlume: true } },
-      _count: {
-        select: {
-          interactions: { where: { interactionType: "like" } },
-          scratches: true,
+  const where = {
+    recipientId: session.userId,
+    deletedAt: null,
+    ...delivered,
+  };
+
+  const [posts, unreadCount] = await Promise.all([
+    prisma.post.findMany({
+      where,
+      include: {
+        user: { select: { id: true, username: true, nomDePlume: true } },
+        _count: {
+          select: {
+            interactions: { where: { interactionType: "like" } },
+            scratches: true,
+          },
         },
       },
-    },
-    orderBy: { createdAt: "desc" },
-    take: limit,
-    ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-  });
+      orderBy: { createdAt: "desc" },
+      take: limit,
+    }),
+    prisma.post.count({ where: { ...where, readAt: null } }),
+  ]);
 
-  const nextCursor = posts.length === limit ? posts[posts.length - 1].id : null;
-
-  // Also get count of unread
-  const unreadCount = await prisma.post.count({
-    where: {
-      recipientId: session.userId,
-      deletedAt: null,
-      ...delivered,
-    },
-  });
-
-  return NextResponse.json({ posts: serializePosts(posts), nextCursor, unreadCount });
+  return NextResponse.json({ posts: serializePosts(posts), unreadCount });
 }

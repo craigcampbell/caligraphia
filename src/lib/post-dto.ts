@@ -9,6 +9,7 @@ export interface PostDtoInput {
   createdAt?: Date | string;
   deliverAt?: Date | string | null;
   deletedAt?: Date | string | null;
+  readAt?: Date | string | null;
   _count?: CountMap;
   scratches?: unknown[];
   comments?: unknown[];
@@ -67,6 +68,7 @@ export function serializePost<T extends PostDtoInput>(post: T) {
     createdAt: toIsoString(post.createdAt),
     deliverAt: toIsoString(post.deliverAt),
     deletedAt: toIsoString(post.deletedAt),
+    readAt: toIsoString(post.readAt),
     counts: {
       scratches: post._count?.scratches ?? post.scratches?.length ?? 0,
       comments: post._count?.comments ?? post.comments?.length ?? 0,

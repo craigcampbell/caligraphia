@@ -60,6 +60,9 @@ interface Props {
   // Max pages this composer allows. Default 1 keeps every existing caller
   // single-page; letters pass a higher cap to enable the page bar.
   maxPages?: number;
+  // When set, this image becomes the canvas backdrop instead of paper — used by
+  // "write back on the same sheet" so you draw directly over the original letter.
+  backgroundImageUrl?: string;
 }
 
 function drawPaper(ctx: CanvasRenderingContext2D, paper: PaperId, w: number, h: number) {
@@ -128,10 +131,12 @@ export function CanvasDraw({
   canvasH = DEFAULT_H,
   submitLabel,
   maxPages = 1,
+  backgroundImageUrl,
 }: Props) {
   const inkScale = canvasW / REFERENCE_WIDTH;
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const ctxRef = useRef<CanvasRenderingContext2D | null>(null);
+  const bgImageRef = useRef<HTMLImageElement | null>(null);
   const [drawing, setDrawing] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const [canSubmit, setCanSubmit] = useState(false);
@@ -292,10 +297,44 @@ export function CanvasDraw({
   }, []);
 
   const redraw = (ctx: CanvasRenderingContext2D) => {
-    drawPaper(ctx, paper, canvasW, canvasH);
+    if (bgImageRef.current) {
+      ctx.drawImage(bgImageRef.current, 0, 0, canvasW, canvasH);
+    } else {
+      drawPaper(ctx, paper, canvasW, canvasH);
+    }
     reseed(DEFAULT_INK_SEED);
     renderStrokes(ctx, strokesRef.current, inkStyle, canvasW, canvasH);
   };
+
+  // Load the optional on-sheet background, then repaint once it's ready.
+  useEffect(() => {
+    if (!backgroundImageUrl) {
+      bgImageRef.current = null;
+      return;
+    }
+    let cancelled = false;
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => {
+      if (cancelled) return;
+      bgImageRef.current = img;
+      const ctx = ctxRef.current;
+      if (ctx) redraw(ctx);
+    };
+    img.onerror = () => {
+      if (cancelled) return;
+      // Couldn't load the letter — fall back to the paper texture so the
+      // composer still works rather than leaving a blank canvas.
+      bgImageRef.current = null;
+      const ctx = ctxRef.current;
+      if (ctx) redraw(ctx);
+    };
+    img.src = backgroundImageUrl;
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [backgroundImageUrl]);
 
   // ---- Multi-page navigation ----
   // Capture the current page's live arrays back into the page store (erase/undo

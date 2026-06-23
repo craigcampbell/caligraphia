@@ -5,10 +5,12 @@ import { useParams } from "next/navigation";
 import { AuthGuard } from "@/components/AuthGuard";
 import { NavBar } from "@/components/NavBar";
 import { StampButton } from "@/components/StampButton";
-import { ScratchOverlay } from "@/components/ScratchOverlay";
+import { WriteBack } from "@/components/WriteBack";
+import { RepliesThread } from "@/components/RepliesThread";
 import { ReportButton } from "@/components/ReportButton";
 import { Postscripts } from "@/components/Postscripts";
 import { useAuth } from "@/hooks/useAuth";
+import { canThrowAwayPost } from "@/lib/post-access";
 import Link from "next/link";
 
 export default function PostDetailPage() {
@@ -16,8 +18,9 @@ export default function PostDetailPage() {
   const { user } = useAuth();
   const [post, setPost] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [scratchMode, setScratchMode] = useState(false);
-  const [scratches, setScratches] = useState<any[]>([]);
+  const [replyRefresh, setReplyRefresh] = useState(0);
+  const [throwing, setThrowing] = useState(false);
+  const [throwError, setThrowError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!id) return;
@@ -28,7 +31,6 @@ export default function PostDetailPage() {
         if (res.ok) {
           const data = await res.json();
           setPost(data.post);
-          setScratches(data.post.scratches || []);
         }
       } catch {
         // ignore
@@ -38,32 +40,29 @@ export default function PostDetailPage() {
     })();
   }, [id]);
 
-  const handleScratchSubmit = async (svgData: string) => {
-    try {
-      const res = await fetch(`/api/posts/${id}/scratch`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ scratch_svg_data: svgData }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setScratches((prev) => [...prev, data.scratch]);
-        setScratchMode(false);
-      }
-    } catch {
-      // ignore
-    }
-  };
-
-  const handleDelete = async () => {
-    if (!confirm("Delete this post?")) return;
+  const handleThrowAway = async () => {
+    if (throwing) return;
+    if (!confirm("Throw this letter away? It'll be crumpled up and gone.")) return;
+    setThrowError(null);
+    setThrowing(true);
+    // Let the crumple-and-toss animation play out, then actually discard it.
+    // Match the shortened duration when the viewer prefers reduced motion.
+    const reduceMotion =
+      typeof window !== "undefined" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    await new Promise((r) => setTimeout(r, reduceMotion ? 250 : 820));
     try {
       const res = await fetch(`/api/posts/${id}`, { method: "DELETE" });
       if (res.ok) {
         window.location.href = "/";
+        return;
       }
+      const data = await res.json().catch(() => null);
+      setThrowError(data?.error || "Could not throw this letter away.");
+      setThrowing(false);
     } catch {
-      // ignore
+      setThrowError("Could not throw this letter away.");
+      setThrowing(false);
     }
   };
 
@@ -96,6 +95,7 @@ export default function PostDetailPage() {
     post.uploadedPhotoUrl;
 
   const isOwner = user?.id === post.user.id;
+  const canThrow = canThrowAwayPost(post, user?.id);
 
   return (
     <AuthGuard>
@@ -117,23 +117,28 @@ export default function PostDetailPage() {
               initialStampCount={post.stampCount ?? 0}
               initialStamped={!!post.stamped}
             />
-            <button
-              onClick={() => setScratchMode(true)}
-              className="btn-scratch"
-            >
-              Scratch
-            </button>
-            {isOwner ? (
-              <button onClick={handleDelete} className="btn-delete">
-                Delete
+            <WriteBack
+              postId={post.id}
+              letterImageUrl={imageUrl}
+              onPosted={() => setReplyRefresh((k) => k + 1)}
+            />
+            {canThrow && (
+              <button
+                onClick={handleThrowAway}
+                className="btn-throwaway"
+                disabled={throwing}
+                title="Throw this letter away"
+              >
+                🗑 Throw away
               </button>
-            ) : (
-              <ReportButton targetType="post" targetId={post.id} />
             )}
+            {!isOwner && <ReportButton targetType="post" targetId={post.id} />}
           </div>
         </div>
 
-        <div className="detail-image-wrapper">
+        {throwError && <div className="throw-error">{throwError}</div>}
+
+        <div className={`detail-image-wrapper${throwing ? " throwing" : ""}`}>
           {imageUrl ? (
             <>
               {post.pageCount > 1 && (
@@ -165,34 +170,44 @@ export default function PostDetailPage() {
 
         <Postscripts endpoint={`/api/posts/${post.id}/comments`} initialComments={post.comments || []} />
 
-        {scratches.length > 0 && (
-          <div className="detail-scratches">
-            <h3 className="scratches-title">Scratches ({scratches.length})</h3>
-            {scratches.map((scratch: any) => (
-              <div key={scratch.id} className="scratch-item">
-                <div className="scratch-author">
-                  {scratch.user.username} scratched this
-                </div>
-                {scratch.compositeImageUrl && (
-                  <img
-                    src={scratch.compositeImageUrl}
-                    alt=""
-                    className="scratch-composite"
-                  />
-                )}
-              </div>
-            ))}
-          </div>
-        )}
+        <RepliesThread postId={post.id} refreshKey={replyRefresh} />
       </main>
 
-      {scratchMode && imageUrl && (
-        <ScratchOverlay
-          postImageUrl={imageUrl}
-          onScratchSubmit={handleScratchSubmit}
-          onClose={() => setScratchMode(false)}
-        />
-      )}
+      <style>{`
+        .btn-throwaway {
+          padding: 8px 14px;
+          border: 1px solid #c9b8a0;
+          border-radius: 8px;
+          background: #fff;
+          color: #7a5c43;
+          cursor: pointer;
+          font-weight: 600;
+          font-family: inherit;
+          font-size: 15px;
+        }
+        .btn-throwaway:hover { background: #f7efe4; border-color: #a98a68; }
+        .btn-throwaway:disabled { opacity: 0.6; cursor: default; }
+        .throw-error {
+          color: #9c3b34; background: #f6e3e1; border: 1px solid #e3b9b4;
+          padding: 8px 12px; border-radius: 8px; margin: 0 0 12px; font-size: 14px;
+        }
+        .detail-image-wrapper.throwing {
+          animation: wadAndToss 0.85s cubic-bezier(.5,-0.15,.75,.5) forwards;
+          transform-origin: center center;
+          pointer-events: none;
+          will-change: transform, opacity, filter;
+        }
+        @keyframes wadAndToss {
+          0%   { transform: scale(1) rotate(0deg); opacity: 1; filter: none; border-radius: 0; }
+          22%  { transform: scale(0.72) rotate(-6deg); filter: contrast(1.25) brightness(0.95); border-radius: 30% 45% 40% 50%; }
+          48%  { transform: scale(0.42) rotate(9deg); filter: contrast(1.5) brightness(0.85); border-radius: 48% 52% 45% 55%; }
+          68%  { transform: translate(6vw, 5vh) scale(0.3) rotate(20deg); filter: contrast(1.6) brightness(0.82); border-radius: 50%; }
+          100% { transform: translate(78vw, -88vh) scale(0.05) rotate(330deg); opacity: 0; filter: contrast(1.7) brightness(0.8); border-radius: 50%; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .detail-image-wrapper.throwing { animation-duration: 0.25s; }
+        }
+      `}</style>
 
 
       <style>{`

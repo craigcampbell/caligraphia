@@ -100,6 +100,9 @@ model Post {
   ocrHashtags        String[]  @map("ocr_hashtags")
   createdAt          DateTime  @default(now()) @map("created_at")
   deletedAt          DateTime? @map("deleted_at")
+  // When the recipient first opened this letter (each letter has one recipient).
+  // Drives the inbox's unopened vs. read piles. Null = still sealed.
+  readAt             DateTime? @map("read_at")
 
   user         User              @relation(fields: [userId], references: [id], onDelete: Cascade)
   interactions PostInteraction[]
@@ -219,12 +222,18 @@ model StampDesign {
 model Reply {
   id           String   @id @default(uuid()) @db.Uuid
   parentPostId String   @map("parent_post_id") @db.Uuid
+  // Each reply's child post is created fresh in the same transaction, so it's
+  // unique by construction — no DB unique constraint needed (and adding one
+  // would make `prisma db push` a destructive, non-interactive-unsafe change).
   childPostId  String   @map("child_post_id") @db.Uuid
+  // true = written on the original sheet (annotated); false = a fresh threaded page
+  onSheet      Boolean  @default(false) @map("on_sheet")
   createdAt    DateTime @default(now()) @map("created_at")
 
   parentPost Post @relation("ParentPost", fields: [parentPostId], references: [id], onDelete: Cascade)
   childPost  Post @relation("ChildPost", fields: [childPostId], references: [id], onDelete: Cascade)
 
+  @@index([parentPostId, createdAt])
   @@map("replies")
 }
 
