@@ -44,10 +44,20 @@ export async function POST(request: Request) {
       });
     }
 
+    // If this address was invited, thread the invitation through to signup so it
+    // can serve as long-lived proof (and link the friendship) even if they
+    // deleted the invite email and just typed their address here.
+    const pendingInvite = await prisma.invite.findFirst({
+      where: { email: payload.email, status: "pending", expiresAt: { gt: new Date() } },
+      orderBy: { createdAt: "desc" },
+      select: { token: true },
+    });
+
     return NextResponse.json({
       needsSignup: true,
       signupToken: token,
       email: payload.email,
+      inviteToken: pendingInvite?.token,
     });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Internal error";

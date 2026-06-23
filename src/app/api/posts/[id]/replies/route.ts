@@ -52,9 +52,12 @@ export async function POST(
   }
 
   const mode = body.mode === "on_sheet" ? "on_sheet" : "fresh";
+  // `mode` is our own control field, not part of the drawing — strip it before
+  // validation so enforceNoTextInput doesn't reject it as stray typed text.
+  const { mode: _omitMode, ...drawingBody } = body;
 
   try {
-    validateCanvasPost(body, REPLY_MIN_DRAW_MS);
+    validateCanvasPost(drawingBody, REPLY_MIN_DRAW_MS);
   } catch (err) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "Invalid drawing" },

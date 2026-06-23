@@ -2,10 +2,12 @@
 
 import { useState, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useAuth } from "@/hooks/useAuth";
 
 function SignupContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { refresh } = useAuth();
   const signupToken = searchParams.get("signupToken") || "";
   const inviteToken = searchParams.get("invite") || "";
 
@@ -28,7 +30,7 @@ function SignupContent() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
-    if (!signupToken) { setError("Missing signup token. Use your magic link again."); return; }
+    if (!signupToken && !inviteToken) { setError("Open your invitation email again, or request a fresh login link."); return; }
     if (username.trim().length < 2) { setError("Username must be at least 2 characters."); return; }
     setLoading(true);
     try {
@@ -40,7 +42,9 @@ function SignupContent() {
       const res = await fetch("/api/auth/signup", { method: "POST", body: formData });
       const data = await res.json();
       if (!res.ok) setError(data.error || "Signup failed");
-      else router.push("/");
+      // Pull the fresh session into the auth provider before navigating, or
+      // AuthGuard still sees the logged-out state and bounces back to sign-in.
+      else { await refresh(); router.push("/"); }
     } catch { setError("Something went wrong."); }
     finally { setLoading(false); }
   };

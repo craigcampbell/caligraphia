@@ -9,6 +9,8 @@ import { WriteBack } from "@/components/WriteBack";
 import { RepliesThread } from "@/components/RepliesThread";
 import { ReportButton } from "@/components/ReportButton";
 import { Postscripts } from "@/components/Postscripts";
+import { PaginatedPages } from "@/components/LetterViewer";
+import { ConfirmModal } from "@/components/ConfirmModal";
 import { useAuth } from "@/hooks/useAuth";
 import { canThrowAwayPost } from "@/lib/post-access";
 import Link from "next/link";
@@ -21,6 +23,7 @@ export default function PostDetailPage() {
   const [replyRefresh, setReplyRefresh] = useState(0);
   const [throwing, setThrowing] = useState(false);
   const [throwError, setThrowError] = useState<string | null>(null);
+  const [confirmThrow, setConfirmThrow] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -42,7 +45,6 @@ export default function PostDetailPage() {
 
   const handleThrowAway = async () => {
     if (throwing) return;
-    if (!confirm("Throw this letter away? It'll be crumpled up and gone.")) return;
     setThrowError(null);
     setThrowing(true);
     // Let the crumple-and-toss animation play out, then actually discard it.
@@ -96,6 +98,10 @@ export default function PostDetailPage() {
 
   const isOwner = user?.id === post.user.id;
   const canThrow = canThrowAwayPost(post, user?.id);
+  const pageUrls = [
+    imageUrl,
+    ...(Array.isArray(post.pages) ? post.pages.map((pg: any) => pg.imageUrl) : []),
+  ].filter(Boolean) as string[];
 
   return (
     <AuthGuard>
@@ -124,7 +130,7 @@ export default function PostDetailPage() {
             />
             {canThrow && (
               <button
-                onClick={handleThrowAway}
+                onClick={() => setConfirmThrow(true)}
                 className="btn-throwaway"
                 disabled={throwing}
                 title="Throw this letter away"
@@ -139,22 +145,8 @@ export default function PostDetailPage() {
         {throwError && <div className="throw-error">{throwError}</div>}
 
         <div className={`detail-image-wrapper${throwing ? " throwing" : ""}`}>
-          {imageUrl ? (
-            <>
-              {post.pageCount > 1 && (
-                <div className="detail-page-label">Page 1 of {post.pageCount}</div>
-              )}
-              <img src={imageUrl} alt="" className="detail-image" />
-              {Array.isArray(post.pages) &&
-                post.pages.map((pg: any, i: number) =>
-                  pg.imageUrl ? (
-                    <div key={pg.id} className="detail-extra-page">
-                      <div className="detail-page-label">Page {i + 2} of {post.pageCount}</div>
-                      <img src={pg.imageUrl} alt="" className="detail-image" />
-                    </div>
-                  ) : null
-                )}
-            </>
+          {pageUrls.length > 0 ? (
+            <PaginatedPages pages={pageUrls} variant="inline" />
           ) : (
             <div className="detail-no-image">No image available</div>
           )}
@@ -172,6 +164,16 @@ export default function PostDetailPage() {
 
         <RepliesThread postId={post.id} refreshKey={replyRefresh} />
       </main>
+
+      <ConfirmModal
+        open={confirmThrow}
+        title="Throw this letter away?"
+        message="It'll be crumpled up and taken down. You can still restore it from the admin panel if needed."
+        confirmLabel="Throw it away"
+        danger
+        onCancel={() => setConfirmThrow(false)}
+        onConfirm={() => { setConfirmThrow(false); handleThrowAway(); }}
+      />
 
       <style>{`
         .btn-throwaway {

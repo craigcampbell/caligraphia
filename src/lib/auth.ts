@@ -20,7 +20,9 @@ const jwtSecret = () =>
 const magicLinkSecret = () =>
   requireSecret("MAGIC_LINK_SECRET", "magic-link-dev-secret");
 const SESSION_COOKIE = "croquis_session";
-const MAGIC_LINK_EXPIRY = "10m";
+// 30 minutes: emails can take a few minutes to arrive and people don't always
+// click right away. Short enough to stay a reasonable bearer-token window.
+const MAGIC_LINK_EXPIRY = "30m";
 const SESSION_EXPIRY = "7d";
 
 export interface SessionPayload {

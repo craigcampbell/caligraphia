@@ -29,7 +29,9 @@ function LoginContent() {
         const data = await res.json();
         if (!res.ok) { setError(data.error || "Invalid link"); return; }
         if (data.needsSignup) {
-          router.push(`/signup?signupToken=${encodeURIComponent(data.signupToken)}`);
+          const params = new URLSearchParams({ signupToken: data.signupToken });
+          if (data.inviteToken) params.set("invite", data.inviteToken);
+          router.push(`/signup?${params.toString()}`);
         } else {
           // Pull the fresh session into the auth provider before navigating,
           // otherwise AuthGuard still sees the stale logged-out state and bounces back here

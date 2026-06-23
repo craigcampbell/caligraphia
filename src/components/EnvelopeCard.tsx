@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { ScratchIcon, StarIcon } from "./Icons";
+import { LetterLightbox } from "./LetterViewer";
 
 interface EnvelopeCardProps {
   post: {
@@ -31,6 +32,7 @@ interface EnvelopeCardProps {
 
 export function EnvelopeCard({ post, onStamp, isStamping }: EnvelopeCardProps) {
   const [opened, setOpened] = useState(false);
+  const [viewing, setViewing] = useState(false);
   const imageUrl = post.imageUrl || post.finalImageUrl || post.uploadedPhotoUrl;
   const waxColor = post.envelopeData?.waxSealColor || "#b22222";
   const initial = post.user.username[0]?.toUpperCase() || "?";
@@ -241,9 +243,14 @@ export function EnvelopeCard({ post, onStamp, isStamping }: EnvelopeCardProps) {
             src={imageUrl}
             alt=""
             className="open-img"
-            onClick={() => setOpened(false)}
+            style={{ cursor: "zoom-in" }}
+            title="View full size"
+            onClick={() => setViewing(true)}
             onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
           />
+          {viewing && (
+            <LetterLightbox postId={post.id} initialImageUrl={imageUrl} onClose={() => setViewing(false)} />
+          )}
           {ageDays > 1 && (
             <div className="open-letter-vignette" style={{
               position: 'absolute', inset: 0,

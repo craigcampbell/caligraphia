@@ -5,6 +5,7 @@ import Link from "next/link";
 import { AuthGuard } from "@/components/AuthGuard";
 import { NavBar } from "@/components/NavBar";
 import { DailyPromptCard } from "@/components/DailyPromptCard";
+import { LetterLightbox } from "@/components/LetterViewer";
 
 interface BoardPost {
   id: string;
@@ -60,6 +61,7 @@ export default function BoardPage() {
   const [hasMore, setHasMore] = useState(true);
   const [loading, setLoading] = useState(false);
   const [picked, setPicked] = useState<BoardPost | null>(null);
+  const [fullSize, setFullSize] = useState<BoardPost | null>(null);
   const [pan, setPan] = useState({ x: 0, y: 0 });
 
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -233,16 +235,34 @@ export default function BoardPage() {
                   </Link>
                   <span className="cork-modal-time">{timeAgo(picked.createdAt)} ago</span>
                 </div>
-                {img && <img src={img} alt="" className="cork-modal-img" />}
+                {img && (
+                  <img
+                    src={img}
+                    alt=""
+                    className="cork-modal-img"
+                    style={{ cursor: "zoom-in" }}
+                    title="View full size"
+                    onClick={() => setFullSize(picked)}
+                  />
+                )}
                 <div className="cork-modal-foot">
                   <span className="cork-modal-stamps">&#9733; {picked.stampCount || 0}</span>
                   {picked._count && <span className="cork-modal-ps">P.S. &times; {picked._count.comments ?? 0}</span>}
+                  <button className="cork-modal-open" onClick={() => setFullSize(picked)}>View full size</button>
                   <Link href={`/post/${picked.id}`} className="cork-modal-open">Open &rarr;</Link>
                 </div>
               </div>
             </div>
           );
         })()}
+
+        {fullSize && (
+          <LetterLightbox
+            postId={fullSize.id}
+            initialImageUrl={fullSize.imageUrl || fullSize.finalImageUrl || fullSize.uploadedPhotoUrl}
+            onClose={() => setFullSize(null)}
+          />
+        )}
       </div>
 
       <style>{`

@@ -18,19 +18,38 @@ export async function POST(request: Request) {
     const bodyObj: Record<string, unknown> = { signupToken, username };
     enforceNoTextInput(bodyObj);
 
-    if (!signupToken || !username) {
+    if ((!signupToken && !inviteToken) || !username) {
       return NextResponse.json(
-        { error: "signupToken and username are required" },
+        { error: "A sign-up link (or invitation) and a username are required" },
         { status: 400 }
       );
     }
 
-    let payload;
-    try {
-      payload = verifyMagicToken(signupToken);
-    } catch {
+    // Resolve the verified email address. A fresh magic/signup token proves the
+    // person owns the inbox; if that short-lived token has expired, a still-valid
+    // invitation to this very sign-up proves the same thing — it was emailed to
+    // that address and is good for ~14 days. So an invited friend can finish
+    // signing up without racing a 30-minute link.
+    let email: string | null = null;
+    if (signupToken) {
+      try {
+        email = verifyMagicToken(signupToken).email;
+      } catch {
+        /* fall through to the invitation below */
+      }
+    }
+    if (!email && inviteToken) {
+      const inv = await prisma.invite.findUnique({ where: { token: inviteToken } });
+      if (inv && inv.status === "pending" && inv.expiresAt > new Date()) {
+        email = inv.email;
+      }
+    }
+    if (!email) {
       return NextResponse.json(
-        { error: "Invalid or expired signup token" },
+        {
+          error:
+            "Your sign-up link has expired. Open your invitation email again and tap Accept — that link stays good for days.",
+        },
         { status: 401 }
       );
     }
@@ -73,7 +92,7 @@ export async function POST(request: Request) {
     const user = await prisma.user.create({
       data: {
         username: usernameTrimmed,
-        email: payload.email,
+        email,
         nomDePlume: nomDePlumeUrl,
         stampBalance: DAILY_STAMP_ALLOWANCE,
       },
@@ -90,7 +109,7 @@ export async function POST(request: Request) {
         if (
           invite &&
           invite.status === "pending" &&
-          invite.email === payload.email &&
+          invite.email === email &&
           invite.inviterId !== user.id
         ) {
           await prisma.$transaction([
