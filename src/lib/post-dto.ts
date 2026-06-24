@@ -5,6 +5,7 @@ export interface PostDtoInput {
   id: string;
   finalImageUrl?: string | null;
   uploadedPhotoUrl?: string | null;
+  backImageUrl?: string | null;
   stampCount?: number | null;
   createdAt?: Date | string;
   deliverAt?: Date | string | null;
@@ -65,6 +66,7 @@ export function serializePost<T extends PostDtoInput>(post: T) {
     imageUrl,
     finalImageUrl: post.finalImageUrl ? imageUrl : null,
     uploadedPhotoUrl: !post.finalImageUrl && post.uploadedPhotoUrl ? imageUrl : null,
+    backImageUrl: post.backImageUrl ? `/api/images/${post.id}?side=back` : null,
     createdAt: toIsoString(post.createdAt),
     deliverAt: toIsoString(post.deliverAt),
     deletedAt: toIsoString(post.deletedAt),

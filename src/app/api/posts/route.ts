@@ -2,7 +2,14 @@ import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { uploadBuffer } from "@/lib/storage";
-import { renderCanvasToPng, renderPostcardToPng, type StrokePoint } from "@/lib/image";
+import {
+  renderCanvasToPng,
+  renderPostcardToPng,
+  renderReplyOnSheet,
+  POSTCARD_WIDTH,
+  POSTCARD_HEIGHT,
+  type StrokePoint,
+} from "@/lib/image";
 import { sendLetterArrivedEmail } from "@/lib/email";
 import { extractOcrFromImage } from "@/lib/ocr";
 import { enforceNoTextInput } from "@/lib/no-text-input";
@@ -107,6 +114,36 @@ export async function POST(request: Request) {
 // Postcards are a quicker format than a proper letter
 const POSTCARD_MIN_DRAW_MS = 8_000;
 
+// Render one page to a PNG. A `paper` of "custom:<id>" is user-made stationery:
+// render the handwriting over that paper image (if the writer is allowed to use
+// it), otherwise fall back to the built-in procedural papers.
+async function renderPageToPng(
+  strokes: StrokePoint[],
+  paper: string,
+  inkStyle: string,
+  format: string,
+  userId: string
+): Promise<Buffer> {
+  const isPostcard = format === "postcard";
+  const w = isPostcard ? POSTCARD_WIDTH : 2400;
+  const h = isPostcard ? POSTCARD_HEIGHT : 3200;
+
+  if (typeof paper === "string" && paper.startsWith("custom:")) {
+    const design = await prisma.paperDesign.findUnique({
+      where: { id: paper.slice("custom:".length) },
+      select: { imageUrl: true, ownerId: true, isPublic: true },
+    });
+    if (design && (design.isPublic || design.ownerId === userId)) {
+      return renderReplyOnSheet(design.imageUrl, strokes, inkStyle, w, h);
+    }
+    paper = "blank"; // not allowed / gone — don't fail the whole letter
+  }
+
+  return isPostcard
+    ? renderPostcardToPng(strokes, paper, inkStyle)
+    : renderCanvasToPng(strokes, paper, inkStyle);
+}
+
 async function handleCanvasPost(body: Record<string, unknown>, session: { userId: string; username: string }) {
   enforceNoTextInput(body);
 
@@ -192,10 +229,7 @@ async function handleCanvasPost(body: Record<string, unknown>, session: { userId
   const sharp = (await import("sharp")).default;
 
   // Page 0 (the cover): becomes post.finalImageUrl and the OCR source.
-  const page0Png =
-    format === "postcard"
-      ? await renderPostcardToPng(strokeData, paper, inkStyle)
-      : await renderCanvasToPng(strokeData, paper, inkStyle);
+  const page0Png = await renderPageToPng(strokeData, paper, inkStyle, format, session.userId);
   const page0Compressed = await sharp(page0Png).png({ quality: 85 }).toBuffer();
   const imageUrl = await uploadBuffer(`posts/${uuidv4()}.png`, page0Compressed, "image/png");
 
@@ -203,7 +237,7 @@ async function handleCanvasPost(body: Record<string, unknown>, session: { userId
   // upload in parallel — each writes a distinct key, so this is safe.
   const extraPageUrls = await Promise.all(
     pages.slice(1).map(async (pg) => {
-      const png = await renderCanvasToPng(pg.strokes, pg.paper, pg.inkStyle);
+      const png = await renderPageToPng(pg.strokes, pg.paper, pg.inkStyle, "letter", session.userId);
       const compressed = await sharp(png).png({ quality: 85 }).toBuffer();
       return uploadBuffer(`post-pages/${uuidv4()}.png`, compressed, "image/png");
     })
@@ -386,6 +420,17 @@ async function handlePhotoPost(request: Request, session: { userId: string; user
   formData.forEach((value, key) => {
     if (typeof value === "string") bodyObj[key] = value;
   });
+
+  // Photo postcard: an uploaded image on the front + a handwritten note on the
+  // back. Handled before the generic text-input guard since it carries its own
+  // drawing fields (validated separately).
+  if (bodyObj.format === "photocard") {
+    if (!photoFile || photoFile.size === 0) {
+      return NextResponse.json({ error: "A photo is required for the front" }, { status: 400 });
+    }
+    return handlePhotoPostcard(formData, photoFile, bodyObj, session);
+  }
+
   enforceNoTextInput(bodyObj);
 
   if (!photoFile || photoFile.size === 0) {
@@ -459,6 +504,93 @@ async function handlePhotoPost(request: Request, session: { userId: string; user
   );
 }
 
+// A photo postcard: the uploaded image becomes the front (fitted to the
+// postcard's landscape shape), and the handwritten strokes are rendered as the
+// back. They flip to read it. The note arrives under the allowlisted
+// `canvas_stroke_data` field name so the no-text-input guard is satisfied.
+async function handlePhotoPostcard(
+  formData: FormData,
+  photoFile: File,
+  bodyObj: Record<string, unknown>,
+  session: { userId: string; username: string }
+) {
+  const sharp = (await import("sharp")).default;
+
+  let strokes: StrokePoint[];
+  try {
+    strokes = JSON.parse(String(formData.get("canvas_stroke_data") || "[]"));
+  } catch {
+    return NextResponse.json({ error: "The note couldn't be read" }, { status: 400 });
+  }
+  const durationMs = Number(formData.get("drawing_duration_ms")) || 0;
+  const paper = typeof bodyObj.paper === "string" ? bodyObj.paper : "blank";
+  const inkStyle = typeof bodyObj.ink_style === "string" ? bodyObj.ink_style : "standard";
+
+  try {
+    validateCanvasPost(
+      { canvas_stroke_data: strokes as unknown as object[], drawing_duration_ms: durationMs },
+      POSTCARD_MIN_DRAW_MS
+    );
+  } catch (err) {
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : "Write a note on the back first" },
+      { status: 400 }
+    );
+  }
+
+  // Front: fit the photo to the postcard's landscape shape (honour EXIF rotation).
+  const front = await sharp(Buffer.from(await photoFile.arrayBuffer()))
+    .rotate()
+    .resize(POSTCARD_WIDTH, POSTCARD_HEIGHT, { fit: "cover", position: "attention" })
+    .jpeg({ quality: 85 })
+    .toBuffer();
+  const frontUrl = await uploadBuffer(`photocards/${uuidv4()}.jpg`, front, "image/jpeg");
+
+  // Back: the handwritten note, rendered as a postcard.
+  const backPng = await renderPostcardToPng(strokes, paper, inkStyle);
+  const backCompressed = await sharp(backPng).png({ quality: 85 }).toBuffer();
+  const backUrl = await uploadBuffer(`photocard-backs/${uuidv4()}.png`, backCompressed, "image/png");
+
+  // OCR the handwritten back for hashtags (the front is just an image).
+  const { text, hashtags } = await extractOcrFromImage(backPng);
+
+  const recipientId = (bodyObj.recipient_id as string) || null;
+  const isDeadLetter = isTruthy(bodyObj.is_dead_letter);
+  const isPrivate = isTruthy(bodyObj.is_private) || !!recipientId || isDeadLetter;
+
+  const post = await prisma.post.create({
+    data: {
+      userId: session.userId,
+      postType: "photo",
+      format: "photocard",
+      finalImageUrl: frontUrl,
+      uploadedPhotoUrl: frontUrl,
+      backImageUrl: backUrl,
+      canvasStrokeData: strokes as unknown as object,
+      paperType: paper,
+      inkStyle,
+      recipientId: isDeadLetter ? undefined : recipientId || undefined,
+      isPrivate,
+      isDeadLetter,
+      ocrText: text,
+      ocrHashtags: hashtags,
+    },
+    include: { user: { select: { id: true, username: true, nomDePlume: true } } },
+  });
+
+  if (recipientId && !isDeadLetter) {
+    await attachLetterToExchange(session.userId, recipientId, post.id);
+    const recipient = await prisma.user.findUnique({
+      where: { id: recipientId },
+      select: { email: true },
+    });
+    if (recipient) await sendLetterArrivedEmail(recipient.email, session.username);
+  }
+  await giveStampReward(session.userId);
+
+  return NextResponse.json({ post: serializePost(post) }, { status: 201 });
+}
+
 function isTruthy(value: unknown): boolean {
   return value === true || value === "true" || value === "1" || value === "on";
 }
@@ -496,13 +628,8 @@ async function giveStampReward(userId: string) {
         series: "Standard Issue",
       },
     });
-
-    await tx.user.update({
-      where: { id: userId },
-      data: {
-        stampBalance: { increment: 1 },
-        totalStampsEarned: { increment: 1 },
-      },
-    });
+    // Note: posting no longer mints free *currency* (stampBalance). Stamps are
+    // scarce — you earn them when people stamp your letters. This just hands out
+    // the collectible "Standard Postage" keepsake.
   });
 }

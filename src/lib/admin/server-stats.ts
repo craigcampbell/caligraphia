@@ -66,3 +66,41 @@ export async function getServerStats(): Promise<ServerStats> {
     platform: `${os.type()} ${os.release()}`,
   };
 }
+
+// Docker disk usage, written by the host cron (scripts/refresh-docker-stats.sh)
+// since the container can't reach the Docker daemon. Null if it hasn't run yet.
+export interface DockerDfRow {
+  size: string;
+  reclaimable: string;
+  count: number;
+}
+export interface DockerStats {
+  capturedAt: string;
+  images: DockerDfRow | null;
+  buildCache: DockerDfRow | null;
+  containers: DockerDfRow | null;
+  volumes: DockerDfRow | null;
+}
+
+export async function getDockerStats(): Promise<DockerStats | null> {
+  try {
+    const raw = await readFile("/app/.runtime/docker-stats.json", "utf8");
+    const parsed = JSON.parse(raw) as {
+      capturedAt: string;
+      df: Array<{ Type: string; Size: string; Reclaimable: string; TotalCount: string }>;
+    };
+    const find = (type: string): DockerDfRow | null => {
+      const r = parsed.df.find((x) => x.Type === type);
+      return r ? { size: r.Size, reclaimable: r.Reclaimable, count: Number(r.TotalCount) || 0 } : null;
+    };
+    return {
+      capturedAt: parsed.capturedAt,
+      images: find("Images"),
+      buildCache: find("Build Cache"),
+      containers: find("Containers"),
+      volumes: find("Local Volumes"),
+    };
+  } catch {
+    return null;
+  }
+}

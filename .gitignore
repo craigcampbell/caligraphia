@@ -10,3 +10,6 @@ tsconfig.tsbuildinfo
 android/.gradle/
 android/**/build/
 android/local.properties
+
+# Host-written runtime stats for the admin panel
+.runtime/

@@ -9,6 +9,8 @@ export default function StampBookPage() {
   const { user } = useAuth();
   const [stampData, setStampData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [buying, setBuying] = useState<string | null>(null);
+  const [buyMsg, setBuyMsg] = useState<string | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -24,7 +26,33 @@ export default function StampBookPage() {
         setLoading(false);
       }
     })();
+    const q = new URLSearchParams(window.location.search);
+    if (q.get("purchased")) setBuyMsg("Payment received — your stamps will land in a moment.");
+    if (q.get("canceled")) setBuyMsg("Checkout canceled.");
   }, []);
+
+  const buyPack = async (packId: string) => {
+    if (buying) return;
+    setBuying(packId);
+    setBuyMsg(null);
+    try {
+      const res = await fetch("/api/stamps/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ packId }),
+      });
+      const data = await res.json();
+      if (res.ok && data.url) {
+        window.location.href = data.url;
+        return;
+      }
+      setBuyMsg(data.error || "Couldn't start checkout.");
+    } catch {
+      setBuyMsg("Couldn't start checkout.");
+    } finally {
+      setBuying(null);
+    }
+  };
 
   const tierColors: Record<string, string> = {
     Common: "#8b6914",
@@ -59,6 +87,48 @@ export default function StampBookPage() {
             </div>
           )}
         </div>
+
+        {stampData && (
+          <div
+            style={{
+              maxWidth: 620, margin: "0 auto 24px", padding: "16px 18px",
+              background: "#fbf7ee", border: "1px solid #e6dcc6", borderRadius: 12,
+            }}
+          >
+            <p style={{ margin: "0 0 12px", color: "#6b5640", fontSize: 14, lineHeight: 1.5 }}>
+              Stamps are precious now. You <strong>earn</strong> them when people stamp your letters
+              {stampData.monthlyGrant ? `, plus ${stampData.monthlyGrant} a month` : ""} — and spend
+              them to stamp letters you love. Running low?
+            </p>
+            {stampData.stripeEnabled ? (
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                {(stampData.packs || []).map((p: any) => (
+                  <button
+                    key={p.id}
+                    onClick={() => buyPack(p.id)}
+                    disabled={buying !== null}
+                    style={{
+                      flex: "1 1 140px", minWidth: 130, padding: "12px 14px", borderRadius: 10,
+                      border: "1px solid #c9a86a", background: "#fffdf8", cursor: "pointer",
+                      font: "inherit", display: "flex", flexDirection: "column", gap: 2, alignItems: "center",
+                    }}
+                  >
+                    <span style={{ fontWeight: 700, color: "#3a2e22" }}>
+                      {buying === p.id ? "…" : `${p.stamps} stamps`}
+                    </span>
+                    <span style={{ fontSize: 13, color: "#8a5a2b" }}>${(p.cents / 100).toFixed(2)}</span>
+                    <span style={{ fontSize: 11, color: "#a89a82" }}>{p.label}</span>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <p style={{ margin: 0, color: "#a89a82", fontSize: 13 }}>Buying stamps is coming soon.</p>
+            )}
+            {buyMsg && (
+              <p style={{ margin: "10px 0 0", color: "#5c4a30", fontSize: 13 }}>{buyMsg}</p>
+            )}
+          </div>
+        )}
 
         {loading && (
           <div className="sb-loading">

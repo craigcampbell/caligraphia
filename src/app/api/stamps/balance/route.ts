@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { ensureDailyStamps, DAILY_STAMP_ALLOWANCE } from "@/lib/stamps";
+import { grantMonthlyStamps, MONTHLY_GRANT_STAMPS } from "@/lib/stamps";
+import { isStripeConfigured, STAMP_PACKS } from "@/lib/payments";
 
 export async function GET() {
   const session = await getSession();
@@ -9,7 +10,7 @@ export async function GET() {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
 
-  await ensureDailyStamps(prisma, session.userId);
+  await grantMonthlyStamps(prisma, session.userId);
 
   const user = await prisma.user.findUnique({
     where: { id: session.userId },
@@ -40,11 +41,13 @@ export async function GET() {
 
   return NextResponse.json({
     balance: user.stampBalance,
-    dailyAllowance: DAILY_STAMP_ALLOWANCE,
+    monthlyGrant: MONTHLY_GRANT_STAMPS,
     totalEarned: user.totalStampsEarned,
     unspentCount,
     commonCount,
     totalStamps: stamps.length,
     designs,
+    stripeEnabled: isStripeConfigured(),
+    packs: STAMP_PACKS,
   });
 }

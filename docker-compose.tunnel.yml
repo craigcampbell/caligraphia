@@ -21,6 +21,9 @@ services:
       - BASE_URL=${BASE_URL}
       - RESEND_API_KEY=${RESEND_API_KEY}
       - EMAIL_FROM=${EMAIL_FROM}
+      # Stripe (buying stamp packs). Leave unset to keep purchasing disabled.
+      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}
+      - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET}
       - MINIO_ENDPOINT=storage
       - MINIO_PORT=9000
       - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY}
@@ -35,6 +38,10 @@ services:
     # without going through the tunnel. Remove this line to keep it fully private.
     ports:
       - "127.0.0.1:3000:3000"
+    volumes:
+      # Host-written Docker disk stats for the admin panel (read-only). The host
+      # cron (scripts/refresh-docker-stats.sh) writes here; the app only reads.
+      - ./.runtime:/app/.runtime:ro
     command: >
       sh -c "npx prisma generate &&
       npx prisma db push &&

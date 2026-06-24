@@ -10,8 +10,8 @@ import { LetterEnvelope } from "@/components/LetterEnvelope";
 import { PhotoUpload } from "@/components/PhotoUpload";
 import { UserSearch } from "@/components/UserSearch";
 
-type PostMode = "choose" | "canvas" | "postcard" | "photo";
-type PostStep = "draw" | "seal" | "send";
+type PostMode = "choose" | "canvas" | "postcard" | "photo" | "photocard";
+type PostStep = "draw" | "seal" | "send" | "photo";
 
 interface Recipient {
   id: string;
@@ -37,6 +37,8 @@ function NewPostContent() {
   const [recipient, setRecipient] = useState<Recipient | null>(null);
   const [sendMode, setSendMode] = useState<"feed" | "private" | "dead">("feed");
   const [slowPost, setSlowPost] = useState(false);
+  // Photo postcard: the chosen front image, held until the back note is drawn.
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
   // Request Board context: writing an ask for someone, or answering one
   const [requestOf, setRequestOf] = useState<Recipient | null>(null);
   const [fulfillReq, setFulfillReq] = useState<{ id: string; requester: Recipient } | null>(null);
@@ -147,8 +149,9 @@ function NewPostContent() {
       return;
     }
 
-    // Postcards skip the envelope ceremony: straight to addressing
-    if (mode === "postcard") {
+    // Postcards (and photo postcards) skip the envelope ceremony: straight to
+    // addressing.
+    if (mode === "postcard" || mode === "photocard") {
       setRenderResult({ pages, durationMs: drawingDurationMs });
       setStep("send");
       setSubmitting(false);
@@ -191,6 +194,44 @@ function NewPostContent() {
 
   const submitFinal = async (envelope: { envelopeData: any; signatureStrokes?: any[] } | null) => {
     if (!renderResult) return;
+
+    // Photo postcard: multipart (front photo file + back-note strokes).
+    if (mode === "photocard") {
+      if (!photoFile) { setError("Choose a photo for the front first."); return; }
+      setSubmitting(true);
+      setError("");
+      try {
+        const back = renderResult.pages[0];
+        const fd = new FormData();
+        fd.append("photo", photoFile);
+        fd.append("format", "photocard");
+        fd.append("canvas_stroke_data", JSON.stringify(back.strokes));
+        fd.append("ink_style", back.inkStyle);
+        fd.append("paper", back.paper);
+        fd.append("drawing_duration_ms", String(renderResult.durationMs));
+        if (sendMode === "dead") {
+          fd.append("is_dead_letter", "true");
+        } else if (sendMode === "private" && recipient?.id) {
+          fd.append("recipient_id", recipient.id);
+          fd.append("is_private", "true");
+        }
+        const res = await fetch("/api/posts", { method: "POST", body: fd });
+        const data = await res.json();
+        if (res.ok) {
+          router.push(
+            sendMode === "private" ? "/inbox" : sendMode === "dead" ? "/dead-letters?left=1" : `/post/${data.post.id}`
+          );
+        } else {
+          setError(data.error || "Failed to send your postcard");
+        }
+      } catch {
+        setError("Something went wrong");
+      } finally {
+        setSubmitting(false);
+      }
+      return;
+    }
+
     setSubmitting(true);
     setError("");
     try {
@@ -243,7 +284,7 @@ function NewPostContent() {
   };
 
   const handleFinalSubmit = async () => {
-    if (mode === "postcard") {
+    if (mode === "postcard" || mode === "photocard") {
       await submitFinal(null);
       return;
     }
@@ -295,6 +336,11 @@ function NewPostContent() {
                 <span className="mode-label">Send a Postcard</span>
                 <span className="mode-desc">Smaller, quicker, postmarked on arrival</span>
               </button>
+              <button onClick={() => { setMode("photocard"); setStep("photo"); }} className="mode-btn photocard-btn">
+                <span className="mode-icon">&#128247;</span>
+                <span className="mode-label">Photo Postcard</span>
+                <span className="mode-desc">A photo on front, your note on the back — flip to read</span>
+              </button>
               <button onClick={() => setMode("photo")} className="mode-btn photo-btn">
                 <span className="mode-icon">&#128247;</span>
                 <span className="mode-label">Upload Photo</span>
@@ -329,6 +375,40 @@ function NewPostContent() {
           </div>
         )}
 
+        {mode === "photocard" && step === "photo" && (
+          <div className="photo-section">
+            <button onClick={() => { setMode("choose"); setStep("draw"); setPhotoFile(null); }} className="back-btn">
+              &larr; Pick mode
+            </button>
+            <h2 className="pg-title" style={{ textAlign: "center" }}>Choose the front photo</h2>
+            <p className="pg-sub" style={{ textAlign: "center" }}>
+              It&apos;ll be fitted to a postcard. You&apos;ll handwrite the note on the back next.
+            </p>
+            <PhotoUpload
+              submitLabel="Use this photo &rarr;"
+              onUpload={(file) => { setPhotoFile(file); setStep("draw"); }}
+              onCancel={() => { setMode("choose"); setStep("draw"); setPhotoFile(null); }}
+            />
+          </div>
+        )}
+
+        {mode === "photocard" && step === "draw" && (
+          <div className="canvas-section">
+            <button onClick={() => setStep("photo")} className="back-btn">
+              &larr; Change photo
+            </button>
+            <h2 className="pg-title" style={{ textAlign: "center" }}>Now write the back of the card</h2>
+            <CanvasDraw
+              onComplete={handleCanvasComplete}
+              onCancel={() => setStep("photo")}
+              canvasW={1600}
+              canvasH={1100}
+              minDrawTimeMs={8000}
+              submitLabel="Address the Postcard"
+            />
+          </div>
+        )}
+
         {mode === "canvas" && step === "seal" && renderResult?.imageUrl && (
           <div className="seal-section">
             <LetterEnvelope
@@ -342,7 +422,7 @@ function NewPostContent() {
           </div>
         )}
 
-        {(mode === "canvas" || mode === "postcard") && step === "send" && (
+        {(mode === "canvas" || mode === "postcard" || mode === "photocard") && step === "send" && (
           <div className="send-section">
             {mode === "canvas" ? (
               <button onClick={() => setStep("seal")} className="back-btn">

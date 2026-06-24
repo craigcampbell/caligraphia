@@ -52,8 +52,49 @@ model User {
   bannedByAdmin AdminUser? @relation("BannedByAdmin", fields: [bannedByAdminId], references: [id])
   warnings      Warning[]
   reportsMade   Report[]   @relation("ReportsByUser")
+  paperDesigns  PaperDesign[]
+  stampPurchases StampPurchase[]
 
   @@map("users")
+}
+
+// A real-money purchase of stamp currency via Stripe Checkout. Credited to the
+// buyer's balance when Stripe's webhook confirms payment (idempotent on session).
+model StampPurchase {
+  id              String    @id @default(uuid()) @db.Uuid
+  userId          String    @map("user_id") @db.Uuid
+  packId          String    @map("pack_id")
+  stamps          Int
+  cents           Int
+  stripeSessionId String    @map("stripe_session_id")
+  status          String    @default("pending") // pending | completed
+  createdAt       DateTime  @default(now()) @map("created_at")
+  completedAt     DateTime? @map("completed_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([stripeSessionId])
+  @@map("stamp_purchases")
+}
+
+// User-made stationery paper. The owner pays stamps to create one; it becomes a
+// selectable background you write letters on. Public designs can be used by
+// anyone (a future paid marketplace can build on this).
+model PaperDesign {
+  id        String   @id @default(uuid()) @db.Uuid
+  ownerId   String   @map("owner_id") @db.Uuid
+  name      String
+  imageUrl  String   @map("image_url")   // internal storage key for the paper texture
+  surface   String   @default("letter")  // letter | postcard
+  isPublic  Boolean  @default(false) @map("is_public")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  owner User @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  @@index([ownerId, createdAt])
+  @@index([isPublic])
+  @@map("paper_designs")
 }
 
 model UserFollow {
@@ -82,6 +123,9 @@ model Post {
   inkStyle           String?   @map("ink_style")
   finalImageUrl      String?   @map("final_image_url")
   uploadedPhotoUrl   String?   @map("uploaded_photo_url")
+  // Photo postcards (format="photocard"): finalImageUrl is the photo front,
+  // backImageUrl is the rendered handwritten note on the back (flippable).
+  backImageUrl       String?   @map("back_image_url")
   envelopeData       Json?     @map("envelope_data")
   signatureData      Json?     @map("signature_data")
   stampCount         Int       @default(0) @map("stamp_count")

@@ -101,6 +101,23 @@ export async function deleteObject(key: string): Promise<void> {
   await client.removeObject(BUCKET, key);
 }
 
+// Total bytes + object count actually stored (letters, photos, postcards, etc.).
+// This is the real "app storage" figure that grows with usage.
+export async function getStorageStats(): Promise<{ objectCount: number; totalBytes: number }> {
+  const client = getClient();
+  return new Promise((resolve, reject) => {
+    let objectCount = 0;
+    let totalBytes = 0;
+    const stream = client.listObjectsV2(BUCKET, "", true);
+    stream.on("data", (obj) => {
+      objectCount += 1;
+      totalBytes += obj.size || 0;
+    });
+    stream.on("end", () => resolve({ objectCount, totalBytes }));
+    stream.on("error", reject);
+  });
+}
+
 async function ensurePrivateBucketPolicy(client: Client): Promise<void> {
   if (privatePolicyChecked || process.env.MINIO_ENFORCE_PRIVATE_POLICY === "false") {
     return;

@@ -5,9 +5,10 @@ import { useState, useRef } from "react";
 interface Props {
   onUpload: (file: File) => void;
   onCancel: () => void;
+  submitLabel?: string;
 }
 
-export function PhotoUpload({ onUpload, onCancel }: Props) {
+export function PhotoUpload({ onUpload, onCancel, submitLabel = "Post Photo" }: Props) {
   const [preview, setPreview] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -42,7 +43,7 @@ export function PhotoUpload({ onUpload, onCancel }: Props) {
 
       <div className="photo-actions">
         <button onClick={onCancel} className="btn-cancel">Cancel</button>
-        {preview && <button onClick={handleSubmit} className="btn-post">Post Photo</button>}
+        {preview && <button onClick={handleSubmit} className="btn-post">{submitLabel}</button>}
       </div>
 
       <style>{`

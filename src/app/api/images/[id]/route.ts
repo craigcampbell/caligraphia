@@ -6,7 +6,7 @@ import { getObjectBuffer } from "@/lib/storage";
 
 // Serve post images through Next.js to avoid MinIO hostname issues
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const session = await getSession();
@@ -15,6 +15,7 @@ export async function GET(
   }
 
   const { id } = await params;
+  const side = new URL(request.url).searchParams.get("side");
 
   try {
     const post = await prisma.post.findUnique({
@@ -22,6 +23,7 @@ export async function GET(
       select: {
         finalImageUrl: true,
         uploadedPhotoUrl: true,
+        backImageUrl: true,
         userId: true,
         recipientId: true,
         isPrivate: true,
@@ -36,7 +38,9 @@ export async function GET(
       return NextResponse.json({ error: "Post not found" }, { status: 404 });
     }
 
-    const imageUrl = post.finalImageUrl || post.uploadedPhotoUrl;
+    // The handwritten back of a photo postcard.
+    const imageUrl =
+      side === "back" ? post.backImageUrl : post.finalImageUrl || post.uploadedPhotoUrl;
     if (!imageUrl) {
       return NextResponse.json({ error: "No image" }, { status: 404 });
     }

@@ -24,6 +24,20 @@ interface Stats {
     invites: number;
     warnings: number;
   };
+  storage: { objectCount: number; totalBytes: number } | null;
+  docker: {
+    capturedAt: string;
+    images: DfRow | null;
+    buildCache: DfRow | null;
+    containers: DfRow | null;
+    volumes: DfRow | null;
+  } | null;
+}
+
+interface DfRow {
+  size: string;
+  reclaimable: string;
+  count: number;
 }
 
 function Meter({ used, total, label }: { used: number; total: number; label: string }) {
@@ -118,7 +132,13 @@ export default function Dashboard() {
                 label={`Memory (${mem.source}${mem.limitBytes ? ", container limit" : ", host"})`}
               />
             )}
-            {disk && <Meter used={disk.usedBytes} total={disk.totalBytes} label={`Disk (${disk.path})`} />}
+            {disk && (
+              <Meter
+                used={disk.usedBytes}
+                total={disk.totalBytes}
+                label="Docker host disk (images, build cache, volumes — not just this app)"
+              />
+            )}
           </div>
           <table className="adm-table" style={{ marginTop: 16 }}>
             <tbody>
@@ -144,6 +164,75 @@ export default function Dashboard() {
               </tr>
             </tbody>
           </table>
+        </div>
+      )}
+
+      {stats && (
+        <div className="adm-card">
+          <h3 style={{ marginTop: 0 }}>App storage</h3>
+          <p className="adm-sub" style={{ marginTop: 0 }}>
+            What your actual content takes up — this is the number that grows with users and letters.
+          </p>
+          <div className="adm-grid" style={{ marginBottom: 0 }}>
+            <div className="adm-stat">
+              <div className="n">{stats.storage ? formatBytes(stats.storage.totalBytes) : "—"}</div>
+              <div className="l">
+                Images & media{stats.storage ? ` · ${stats.storage.objectCount} files` : ""}
+              </div>
+            </div>
+            <div className="adm-stat">
+              <div className="n">{stats.db ? formatBytes(stats.db.databaseSizeBytes) : "—"}</div>
+              <div className="l">Database</div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {stats?.docker && (
+        <div className="adm-card">
+          <h3 style={{ marginTop: 0 }}>Docker / builds</h3>
+          <p className="adm-sub" style={{ marginTop: 0 }}>
+            What Docker is using on the host. &quot;Reclaimable&quot; is freed by{" "}
+            <code className="mono-sm">docker builder prune -f &amp;&amp; docker image prune -f</code>.
+          </p>
+          <table className="adm-table">
+            <thead>
+              <tr>
+                <th>Kind</th>
+                <th>Size</th>
+                <th>Reclaimable</th>
+                <th>Count</th>
+              </tr>
+            </thead>
+            <tbody>
+              {([
+                ["Images", stats.docker.images],
+                ["Build cache", stats.docker.buildCache],
+                ["Containers", stats.docker.containers],
+                ["Volumes (your data)", stats.docker.volumes],
+              ] as const).map(([label, row]) =>
+                row ? (
+                  <tr key={label}>
+                    <td>{label}</td>
+                    <td>{row.size}</td>
+                    <td className={/^0B/.test(row.reclaimable) ? "adm-muted" : ""}>{row.reclaimable}</td>
+                    <td>{row.count}</td>
+                  </tr>
+                ) : null
+              )}
+            </tbody>
+          </table>
+          <p className="adm-sub" style={{ marginBottom: 0 }}>
+            as of {new Date(stats.docker.capturedAt).toLocaleString()}
+          </p>
+        </div>
+      )}
+
+      {stats && !stats.docker && (
+        <div className="adm-card adm-muted" style={{ fontSize: 13 }}>
+          Docker/build sizes aren&apos;t available yet — run{" "}
+          <code className="mono-sm">scripts/refresh-docker-stats.sh</code> on the host (it&apos;s
+          scheduled to refresh automatically).
         </div>
       )}
 

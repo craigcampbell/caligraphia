@@ -44,7 +44,7 @@ const INK_COLORS = [
 
 export interface CanvasPage {
   strokes: StrokePoint[];
-  paper: PaperId;
+  paper: string; // a preset id, or "custom:<paperDesignId>" for user stationery
   inkStyle: InkId;
 }
 
@@ -65,7 +65,7 @@ interface Props {
   backgroundImageUrl?: string;
 }
 
-function drawPaper(ctx: CanvasRenderingContext2D, paper: PaperId, w: number, h: number) {
+function drawPaper(ctx: CanvasRenderingContext2D, paper: string, w: number, h: number) {
   const preset = PAPER_PRESETS.find((p) => p.id === paper) || PAPER_PRESETS[0];
   ctx.fillStyle = preset.bg;
   ctx.fillRect(0, 0, w, h);
@@ -143,9 +143,17 @@ export function CanvasDraw({
   const [selectedColor, setSelectedColor] = useState(
     (() => { const h = new Date().getHours(); return (h >= 2 && h < 4) ? "#e8e8f0" : INK_COLORS[0]; })()
   );
-  const [paper, setPaper] = useState<PaperId>(
+  const [paper, setPaper] = useState<string>(
     (() => { const h = new Date().getHours(); return (h >= 2 && h < 4) ? "midnight" : "ruled"; })()
   );
+  // Custom stationery: the user's + public paper designs, and the currently
+  // selected one's image (used as the canvas background when paper="custom:…").
+  const [customPapers, setCustomPapers] = useState<{ id: string; name: string; imageUrl: string }[]>([]);
+  const [customBgUrl, setCustomBgUrl] = useState<string | null>(null);
+  const [paperBusy, setPaperBusy] = useState(false);
+  const [paperMsg, setPaperMsg] = useState<string | null>(null);
+  const paperFileRef = useRef<HTMLInputElement>(null);
+  const paperSurface = canvasW >= 2000 ? "letter" : "postcard";
   const [inkStyle, setInkStyle] = useState<InkId>("fountain");
   const [tool, setTool] = useState<"pen" | "eraser" | "hand">("pen");
   // Brush-size multiplier applied to whatever pen is selected (and the eraser).
@@ -173,7 +181,7 @@ export function CanvasDraw({
 
   // Pen scratch sounds
   const [soundOn, setSoundOn] = useState(false);
-  const { startScratch, updateScratch, stopScratch, enable, disable } = usePenSounds(paper, inkStyle);
+  const { startScratch, updateScratch, stopScratch, enable, disable } = usePenSounds(paper as PaperId, inkStyle);
 
   // Multi-page: each page is its own stroke array. strokesRef / strokeStartsRef
   // always POINT AT the current page's arrays, so every existing drawing handler
@@ -306,10 +314,14 @@ export function CanvasDraw({
     renderStrokes(ctx, strokesRef.current, inkStyle, canvasW, canvasH);
   };
 
-  // Load the optional on-sheet background, then repaint once it's ready.
+  // Load the canvas background — the on-sheet image (photo postcards, via prop)
+  // or the selected custom stationery — then repaint. No background → paper texture.
   useEffect(() => {
-    if (!backgroundImageUrl) {
+    const bg = backgroundImageUrl || customBgUrl;
+    if (!bg) {
       bgImageRef.current = null;
+      const ctx = ctxRef.current;
+      if (ctx) redraw(ctx);
       return;
     }
     let cancelled = false;
@@ -323,18 +335,76 @@ export function CanvasDraw({
     };
     img.onerror = () => {
       if (cancelled) return;
-      // Couldn't load the letter — fall back to the paper texture so the
-      // composer still works rather than leaving a blank canvas.
+      // Couldn't load it — fall back to paper texture rather than a blank canvas.
       bgImageRef.current = null;
       const ctx = ctxRef.current;
       if (ctx) redraw(ctx);
     };
-    img.src = backgroundImageUrl;
+    img.src = bg;
     return () => {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [backgroundImageUrl]);
+  }, [backgroundImageUrl, customBgUrl]);
+
+  // Load the writer's custom stationery (their own + public) for the palette.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/paper-designs?surface=${paperSurface}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!cancelled) {
+          setCustomPapers(
+            (data.designs || []).map((d: { id: string; name: string; imageUrl: string }) => ({
+              id: d.id,
+              name: d.name,
+              imageUrl: d.imageUrl,
+            }))
+          );
+        }
+      } catch {
+        /* palette just won't show custom papers */
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [paperSurface]);
+
+  const choosePresetPaper = (id: string) => {
+    setPaper(id);
+    setCustomBgUrl(null);
+  };
+  const chooseCustomPaper = (d: { id: string; imageUrl: string }) => {
+    setPaper(`custom:${d.id}`);
+    setCustomBgUrl(d.imageUrl);
+  };
+  const uploadPaper = async (file: File) => {
+    if (paperBusy) return;
+    setPaperBusy(true);
+    setPaperMsg(null);
+    try {
+      const fd = new FormData();
+      fd.append("image", file);
+      fd.append("surface", paperSurface);
+      const res = await fetch("/api/paper-designs", { method: "POST", body: fd });
+      const data = await res.json();
+      if (res.ok && data.design) {
+        setCustomPapers((prev) => [
+          { id: data.design.id, name: data.design.name, imageUrl: data.design.imageUrl },
+          ...prev,
+        ]);
+        chooseCustomPaper(data.design);
+        setPaperMsg("Stationery saved & selected.");
+      } else {
+        setPaperMsg(data.error || "Couldn't make that into stationery.");
+      }
+    } catch {
+      setPaperMsg("Couldn't make that into stationery.");
+    } finally {
+      setPaperBusy(false);
+    }
+  };
 
   // ---- Multi-page navigation ----
   // Capture the current page's live arrays back into the page store (erase/undo
@@ -826,9 +896,36 @@ export function CanvasDraw({
               <span className="palette-label">Paper</span>
               <div className="paper-chooser">
                 {PAPER_PRESETS.map((p) => (
-                  <button key={p.id} className={`paper-chip ${paper === p.id ? "active" : ""}`} onClick={() => setPaper(p.id)} style={{ background: p.bg }}>{p.name}</button>
+                  <button key={p.id} className={`paper-chip ${paper === p.id ? "active" : ""}`} onClick={() => choosePresetPaper(p.id)} style={{ background: p.bg }}>{p.name}</button>
                 ))}
+                {customPapers.map((d) => (
+                  <button
+                    key={d.id}
+                    className={`paper-chip paper-chip-custom ${paper === `custom:${d.id}` ? "active" : ""}`}
+                    onClick={() => chooseCustomPaper(d)}
+                    style={{ backgroundImage: `url(${d.imageUrl})` }}
+                    title={d.name}
+                    aria-label={d.name}
+                  />
+                ))}
+                <button
+                  className="paper-chip paper-make"
+                  onClick={() => paperFileRef.current?.click()}
+                  disabled={paperBusy}
+                  title="Turn a photo into your own stationery (costs 20 stamps)"
+                >
+                  {paperBusy ? "…" : "＋ Make your own"}
+                </button>
+                <input
+                  ref={paperFileRef}
+                  type="file"
+                  accept="image/*"
+                  style={{ display: "none" }}
+                  onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadPaper(f); e.currentTarget.value = ""; }}
+                />
               </div>
+              <div className="paper-make-note">Make your own from a photo — 20 stamps.</div>
+              {paperMsg && <div className="paper-msg">{paperMsg}</div>}
             </div>
 
             <div className="palette-section">
@@ -1023,6 +1120,14 @@ export function CanvasDraw({
         }
         .ink-chip.active { background: #ede0cc; font-weight: 700; }
         .paper-chip:hover, .ink-chip:hover { border-color: #b0a090; }
+        .paper-chip-custom {
+          width: 40px; height: 30px; padding: 0; background-size: cover; background-position: center;
+          text-indent: -9999px; overflow: hidden;
+        }
+        .paper-make { font-weight: 600; color: #8b4513; border-style: dashed; }
+        .paper-make:disabled { opacity: 0.6; cursor: default; }
+        .paper-make-note { font-size: 11px; color: #a89a82; margin-top: 6px; }
+        .paper-msg { font-size: 12px; color: #5c4a30; margin-top: 4px; }
         .ink-palette { display: flex; gap: 4px; flex-wrap: wrap; }
         .ink-swatch { width: 24px; height: 24px; border-radius: 50%; border: 2px solid transparent; cursor: pointer; padding: 0; transition: transform 0.12s; }
         .ink-swatch.active { border-color: #333; transform: scale(1.25); box-shadow: 0 0 6px rgba(0,0,0,0.2); }

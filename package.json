@@ -16,13 +16,16 @@
     "admin:create": "tsx scripts/admin-create.ts",
     "admin:reset-2fa": "tsx scripts/admin-reset-2fa.ts",
     "admin:reset-pw": "tsx scripts/admin-reset-pw.ts",
-    "admin:list": "tsx scripts/admin-list.ts"
+    "admin:list": "tsx scripts/admin-list.ts",
+    "stats:refresh": "sh scripts/refresh-docker-stats.sh",
+    "stats:install-cron": "sh scripts/install-stats-cron.sh"
   },
   "dependencies": {
     "@napi-rs/canvas": "^0.1.65",
     "@node-rs/argon2": "^1.8.3",
     "@prisma/client": "^5.22.0",
     "cookie": "^0.7.2",
+    "gsap": "^3.15.0",
     "jsonwebtoken": "^9.0.2",
     "minio": "^8.0.1",
     "next": "^14.2.15",
@@ -32,6 +35,7 @@
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "sharp": "^0.33.5",
+    "stripe": "^22.2.3",
     "tesseract.js": "^5.1.1",
     "uuid": "^10.0.0"
   },

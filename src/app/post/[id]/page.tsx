@@ -10,6 +10,7 @@ import { RepliesThread } from "@/components/RepliesThread";
 import { ReportButton } from "@/components/ReportButton";
 import { Postscripts } from "@/components/Postscripts";
 import { PaginatedPages } from "@/components/LetterViewer";
+import { PostcardFlip } from "@/components/PostcardFlip";
 import { ConfirmModal } from "@/components/ConfirmModal";
 import { useAuth } from "@/hooks/useAuth";
 import { canThrowAwayPost } from "@/lib/post-access";
@@ -145,7 +146,9 @@ export default function PostDetailPage() {
         {throwError && <div className="throw-error">{throwError}</div>}
 
         <div className={`detail-image-wrapper${throwing ? " throwing" : ""}`}>
-          {pageUrls.length > 0 ? (
+          {post.format === "photocard" && post.backImageUrl && imageUrl ? (
+            <PostcardFlip frontUrl={imageUrl} backUrl={post.backImageUrl} />
+          ) : pageUrls.length > 0 ? (
             <PaginatedPages pages={pageUrls} variant="inline" />
           ) : (
             <div className="detail-no-image">No image available</div>
