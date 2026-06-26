@@ -34,6 +34,21 @@ export default function HomePage() {
                 </Link>
               </div>
             </div>
+            {user.postCount === 0 && (
+              <div className="onboard-card">
+                <div className="onboard-mark">&#9998;</div>
+                <h2 className="onboard-title">Welcome, {user.username}!</h2>
+                <p className="onboard-lead">Caligraphia is all handwriting — no keyboards. Grab a stylus, or just use your finger.</p>
+                <ol className="onboard-steps">
+                  <li>Write your very first letter</li>
+                  <li>Post it to the Postbox, or send it to a friend</li>
+                  <li>Stamp letters you love — that&apos;s how stamps travel here</li>
+                </ol>
+                <Link href="/post/new" className="home-cta">
+                  <span className="cta-icon">&#9998;</span> Write your first letter
+                </Link>
+              </div>
+            )}
             <ExchangeCard />
             <div className="home-prompt-wrap">
               <DailyPromptCard />
@@ -81,6 +96,12 @@ export default function HomePage() {
         .home-ctas { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; position: relative; z-index: 1; }
         .home-cta-quiet { background: #fffef9 !important; color: #5c4a30 !important; border: 1px solid #d8cfb8; box-shadow: none !important; }
         .home-invite-note { font-size: 12.5px; color: #a09080; margin-top: 14px; position: relative; z-index: 1; }
+        .onboard-card { max-width: 560px; margin: 22px auto 0; padding: 22px 24px; text-align: center;
+          background: #fffdf8; border: 1px solid #e6dcc6; border-radius: 14px; box-shadow: 0 6px 22px rgba(0,0,0,0.06); }
+        .onboard-mark { font-size: 34px; color: #8b4513; }
+        .onboard-title { font-size: 20px; color: #2c2416; margin: 4px 0 6px; }
+        .onboard-lead { color: #6b5640; margin: 0 auto 14px; max-width: 420px; line-height: 1.55; }
+        .onboard-steps { text-align: left; max-width: 360px; margin: 0 auto 18px; color: #5c4a30; line-height: 1.7; padding-left: 22px; }
         .home-prompt-wrap { max-width: 900px; margin: 20px auto 0; padding: 0 16px; display: flex; justify-content: center; }
         .feed-heading { max-width: 900px; margin: 28px auto 4px; padding: 0 16px; font-size: 17px; font-weight: 700; color: #2c2416; }
         .feed-heading-sub { font-weight: 400; font-style: italic; color: #a09080; font-size: 13px; }

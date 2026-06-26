@@ -30,5 +30,13 @@ export async function GET() {
     return NextResponse.json({ error: "User not found" }, { status: 404 });
   }
 
-  return NextResponse.json({ user });
+  const { _count, ...rest } = user;
+  return NextResponse.json({
+    user: {
+      ...rest,
+      postCount: _count.posts,
+      followerCount: _count.followers,
+      followingCount: _count.following,
+    },
+  });
 }
