@@ -5,6 +5,7 @@ import { Feed } from "@/components/Feed";
 import { ExchangeCard } from "@/components/ExchangeCard";
 import { DailyPromptCard } from "@/components/DailyPromptCard";
 import { PublicGallery } from "@/components/PublicGallery";
+import { WaitlistForm } from "@/components/WaitlistForm";
 import { useAuth } from "@/hooks/useAuth";
 import Link from "next/link";
 
@@ -74,6 +75,7 @@ export default function HomePage() {
               </a>
             </div>
             <p className="home-invite-note">Caligraphia is invite-only — sign in, or ask a friend for a handwritten invitation.</p>
+            <WaitlistForm />
           </div>
           <h2 id="peek" className="feed-heading">The Postbox <span className="feed-heading-sub">— letters left out for everyone</span></h2>
           <PublicGallery />

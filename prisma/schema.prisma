@@ -627,6 +627,22 @@ enum AdminAuditAction {
   backup_download
   admin_enroll_totp
   admin_recovery_used
+  waitlist_invite
+  waitlist_remove
+}
+
+// Visitors to the invite-only landing can leave their email here; an admin works
+// the list and brings people in via the normal handwritten-invite flow.
+model WaitlistEntry {
+  id        String    @id @default(uuid()) @db.Uuid
+  email     String    @unique
+  note      String?
+  source    String?   // where they signed up from, e.g. "landing"
+  createdAt DateTime  @default(now()) @map("created_at")
+  invitedAt DateTime? @map("invited_at")
+
+  @@index([createdAt])
+  @@map("waitlist_entries")
 }
 
 model AdminAudit {
