@@ -61,18 +61,20 @@ export function PublicGallery() {
       )}
       <div className="pg-grid">
         {letters.map((l) => (
-          <Link key={l.id} href={`/l/${l.id}`} className="pg-card">
-            {l.imageUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={l.imageUrl} alt={`Letter by ${l.author.username}`} loading="lazy" className="pg-img" />
-            ) : (
-              <div className="pg-img pg-noimg">&#9993;</div>
-            )}
+          <div key={l.id} className="pg-card">
+            <Link href={`/l/${l.id}`} className="pg-imglink" aria-label={`Read the letter by ${l.author.username}`}>
+              {l.imageUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={l.imageUrl} alt={`Letter by ${l.author.username}`} loading="lazy" className="pg-img" />
+              ) : (
+                <div className="pg-img pg-noimg">&#9993;</div>
+              )}
+            </Link>
             <div className="pg-meta">
-              <span className="pg-author">{l.author.username}</span>
+              <Link href={`/u/${l.author.username}`} className="pg-author">{l.author.username}</Link>
               {l.stampCount > 0 && <span className="pg-stamps">&#9733; {l.stampCount}</span>}
             </div>
-          </Link>
+          </div>
         ))}
       </div>
       <div ref={sentinelRef} />
@@ -86,10 +88,12 @@ export function PublicGallery() {
           background: #fffdf8; border: 1px solid #e6dcc6; border-radius: 12px; overflow: hidden;
           text-decoration: none; color: inherit; box-shadow: 0 2px 8px rgba(0,0,0,0.05); transition: transform .15s, box-shadow .15s; }
         .pg-card:hover { transform: translateY(-3px); box-shadow: 0 10px 24px rgba(0,0,0,0.12); }
+        .pg-imglink { display: block; }
         .pg-img { width: 100%; height: auto; display: block; background: #fff; }
         .pg-noimg { display: flex; align-items: center; justify-content: center; height: 160px; font-size: 30px; color: #c2b393; }
         .pg-meta { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; }
-        .pg-author { font-weight: 600; color: #3a2e22; font-size: 14px; }
+        .pg-author { font-weight: 600; color: #3a2e22; font-size: 14px; text-decoration: none; }
+        .pg-author:hover { color: #8a5a2b; text-decoration: underline; }
         .pg-stamps { color: #b08d2e; font-size: 13px; }
         .pg-loading { text-align: center; color: #a89a82; padding: 20px; }
         @media (max-width: 520px) { .pg-grid { columns: 2 150px; } }
