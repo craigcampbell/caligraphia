@@ -31,12 +31,17 @@ export async function GET(request: Request) {
   const groupId = searchParams.get("groupId");
   const userId = searchParams.get("userId");
   const limit = Math.min(parseInt(searchParams.get("limit") || "20", 10), 50);
+  if (cursor && !/^[0-9a-f-]{36}$/i.test(cursor)) {
+    return NextResponse.json({ error: "Invalid cursor" }, { status: 400 });
+  }
 
   const where: Record<string, unknown> = {
     deletedAt: null,
-    // Only show public, reviewed posts in the main feed
+    // Only show public, reviewed posts in the main feed. recipientId: null is
+    // defense-in-depth — a letter addressed to someone is never feed content.
     isPrivate: false,
     needsReview: false,
+    recipientId: null,
     OR: [{ deliverAt: null }, { deliverAt: { lte: new Date() } }],
     // Handwritten asks live on the Request Board, not in the feed
     requestAsk: null,

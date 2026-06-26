@@ -25,6 +25,8 @@ export default function PostDetailPage() {
   const [throwing, setThrowing] = useState(false);
   const [throwError, setThrowError] = useState<string | null>(null);
   const [confirmThrow, setConfirmThrow] = useState(false);
+  const [showcased, setShowcased] = useState<boolean | null>(null);
+  const [showcaseBusy, setShowcaseBusy] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -99,6 +101,27 @@ export default function PostDetailPage() {
 
   const isOwner = user?.id === post.user.id;
   const canThrow = canThrowAwayPost(post, user?.id);
+  const showcaseEligible =
+    isOwner && !post.isPrivate && !post.recipientId && !post.isDeadLetter && !post.needsReview && !post.deletedAt;
+  const isShowcased = showcased ?? !!post.isShowcased;
+
+  const toggleShowcase = async () => {
+    if (showcaseBusy) return;
+    setShowcaseBusy(true);
+    const next = !isShowcased;
+    try {
+      const res = await fetch(`/api/posts/${post.id}/showcase`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ showcase: next }),
+      });
+      if (res.ok) setShowcased(next);
+    } catch {
+      /* ignore */
+    } finally {
+      setShowcaseBusy(false);
+    }
+  };
   const pageUrls = [
     imageUrl,
     ...(Array.isArray(post.pages) ? post.pages.map((pg: any) => pg.imageUrl) : []),
@@ -163,6 +186,28 @@ export default function PostDetailPage() {
           </div>
         )}
 
+        {showcaseEligible && (
+          <div className="showcase-card">
+            {isShowcased ? (
+              <>
+                <span className="showcase-on">&#127807; Showcased on the public web</span>
+                <a className="showcase-link" href={`/l/${post.id}`} target="_blank" rel="noreferrer">view public page &#8599;</a>
+                <button className="showcase-btn off" onClick={toggleShowcase} disabled={showcaseBusy}>
+                  {showcaseBusy ? "…" : "Make members-only"}
+                </button>
+              </>
+            ) : (
+              <>
+                <span className="showcase-off">Share this letter beyond Caligraphia?</span>
+                <button className="showcase-btn" onClick={toggleShowcase} disabled={showcaseBusy}>
+                  {showcaseBusy ? "…" : "Showcase publicly"}
+                </button>
+                <span className="showcase-note">Creates a public, shareable link — only for letters you&apos;re happy to show the open internet.</span>
+              </>
+            )}
+          </div>
+        )}
+
         <Postscripts endpoint={`/api/posts/${post.id}/comments`} initialComments={post.comments || []} />
 
         <RepliesThread postId={post.id} refreshKey={replyRefresh} />
@@ -196,6 +241,21 @@ export default function PostDetailPage() {
           color: #9c3b34; background: #f6e3e1; border: 1px solid #e3b9b4;
           padding: 8px 12px; border-radius: 8px; margin: 0 0 12px; font-size: 14px;
         }
+        .showcase-card {
+          max-width: 700px; margin: 18px auto 0; padding: 12px 16px; display: flex;
+          align-items: center; gap: 12px; flex-wrap: wrap;
+          background: #f6f3ea; border: 1px solid #e2d8c2; border-radius: 10px; font-size: 14px;
+        }
+        .showcase-on { color: #5a7a4a; font-weight: 600; }
+        .showcase-off { color: #6b5640; }
+        .showcase-link { color: #8a5a2b; text-decoration: none; }
+        .showcase-btn {
+          font: inherit; font-size: 13px; padding: 7px 14px; border-radius: 8px;
+          border: 1px solid #b98a5e; background: #fff; color: #8a5a2b; cursor: pointer; font-weight: 600;
+        }
+        .showcase-btn:hover { background: #fbf3e8; }
+        .showcase-btn.off { border-color: #d0c8b8; color: #6b5640; font-weight: 500; }
+        .showcase-note { flex-basis: 100%; font-size: 12px; color: #a89a82; }
         .detail-image-wrapper.throwing {
           animation: wadAndToss 0.85s cubic-bezier(.5,-0.15,.75,.5) forwards;
           transform-origin: center center;

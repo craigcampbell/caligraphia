@@ -29,6 +29,7 @@ export async function GET(
       deletedAt: null,
       isPrivate: false,
       needsReview: false,
+      recipientId: null,
       OR: [{ deliverAt: null }, { deliverAt: { lte: new Date() } }],
       ocrHashtags: { hasSome: tags },
     },

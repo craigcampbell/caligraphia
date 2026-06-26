@@ -26,6 +26,7 @@ export async function GET(
         : {
             isPrivate: false,
             needsReview: false,
+            recipientId: null,
             OR: [{ deliverAt: null }, { deliverAt: { lte: new Date() } }],
           }),
     },

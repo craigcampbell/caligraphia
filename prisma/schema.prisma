@@ -152,6 +152,9 @@ model Post {
   recipientId        String?   @map("recipient_id") @db.Uuid
   isPrivate          Boolean   @default(false) @map("is_private")
   needsReview        Boolean   @default(false) @map("needs_review")
+  // The author has opted this public-feed letter into the open, crawlable web
+  // (share cards, /explore, /l/[id]). Default off — going public is explicit.
+  isShowcased        Boolean   @default(false) @map("is_showcased")
   format             String    @default("letter") // letter | postcard
   // Multi-page letters: page 0 lives on this row (finalImageUrl / canvasStrokeData);
   // pages 1..N-1 are PostPage rows. pageCount is the total including page 0.
