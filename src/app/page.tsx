@@ -6,6 +6,7 @@ import { ExchangeCard } from "@/components/ExchangeCard";
 import { DailyPromptCard } from "@/components/DailyPromptCard";
 import { PublicGallery } from "@/components/PublicGallery";
 import { WaitlistForm } from "@/components/WaitlistForm";
+import { todaysPrompt } from "@/lib/prompts";
 import { useAuth } from "@/hooks/useAuth";
 import Link from "next/link";
 
@@ -66,6 +67,7 @@ export default function HomePage() {
             <h1 className="home-title">Caligraphia</h1>
             <Flourish />
             <p className="home-sub">Letters, doodles, and real mail — written entirely by hand. No keyboards.</p>
+            <p className="home-prompt-teaser">Today&apos;s prompt — <em>{todaysPrompt()}</em></p>
             <div className="home-ctas">
               <Link href="/login" className="home-cta">
                 <span className="cta-icon">&#9998;</span> Sign in
@@ -98,6 +100,9 @@ export default function HomePage() {
         .home-ctas { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; position: relative; z-index: 1; }
         .home-cta-quiet { background: #fffef9 !important; color: #5c4a30 !important; border: 1px solid #d8cfb8; box-shadow: none !important; }
         .home-invite-note { font-size: 12.5px; color: #a09080; margin-top: 14px; position: relative; z-index: 1; }
+        .home-prompt-teaser { font-size: 13.5px; color: #6b5640; margin: 0 auto 16px; max-width: 460px; position: relative; z-index: 1;
+          padding: 8px 14px; background: #fff8e6; border: 1px solid #ecdcae; border-radius: 8px; }
+        .home-prompt-teaser em { font-style: italic; color: #4a3a16; }
         .onboard-card { max-width: 560px; margin: 22px auto 0; padding: 22px 24px; text-align: center;
           background: #fffdf8; border: 1px solid #e6dcc6; border-radius: 14px; box-shadow: 0 6px 22px rgba(0,0,0,0.06); }
         .onboard-mark { font-size: 34px; color: #8b4513; }
