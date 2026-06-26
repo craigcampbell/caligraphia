@@ -12,6 +12,7 @@ import { Postscripts } from "@/components/Postscripts";
 import { PaginatedPages } from "@/components/LetterViewer";
 import { PostcardFlip } from "@/components/PostcardFlip";
 import { ConfirmModal } from "@/components/ConfirmModal";
+import { VoicePostscript } from "@/components/VoicePostscript";
 import { useAuth } from "@/hooks/useAuth";
 import { canThrowAwayPost } from "@/lib/post-access";
 import Link from "next/link";
@@ -27,6 +28,7 @@ export default function PostDetailPage() {
   const [confirmThrow, setConfirmThrow] = useState(false);
   const [showcased, setShowcased] = useState<boolean | null>(null);
   const [showcaseBusy, setShowcaseBusy] = useState(false);
+  const [voiceOverride, setVoiceOverride] = useState<string | null | undefined>(undefined);
 
   useEffect(() => {
     if (!id) return;
@@ -177,6 +179,13 @@ export default function PostDetailPage() {
             <div className="detail-no-image">No image available</div>
           )}
         </div>
+
+        <VoicePostscript
+          postId={post.id}
+          voiceUrl={voiceOverride !== undefined ? voiceOverride : post.voiceUrl || null}
+          isOwner={isOwner}
+          onChange={(has) => setVoiceOverride(has ? `/api/media/voice/${post.id}` : null)}
+        />
 
         {post.ocrHashtags?.length > 0 && (
           <div className="detail-hashtags">

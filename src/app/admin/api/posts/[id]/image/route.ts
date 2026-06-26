@@ -30,6 +30,8 @@ export const DELETE = withAdmin(async (req, { admin, params }) => {
       id: true,
       finalImageUrl: true,
       uploadedPhotoUrl: true,
+      backImageUrl: true,
+      voiceUrl: true,
       pages: { select: { id: true, imageUrl: true } },
     },
   });
@@ -38,6 +40,8 @@ export const DELETE = withAdmin(async (req, { admin, params }) => {
   const keys = [
     post.finalImageUrl,
     post.uploadedPhotoUrl,
+    post.backImageUrl,
+    post.voiceUrl,
     ...post.pages.map((p) => p.imageUrl),
   ].filter((k): k is string => Boolean(k));
 
@@ -57,6 +61,9 @@ export const DELETE = withAdmin(async (req, { admin, params }) => {
       data: {
         finalImageUrl: null,
         uploadedPhotoUrl: null,
+        backImageUrl: null,
+        voiceUrl: null,
+        voiceDurationMs: null,
         canvasStrokeData: Prisma.DbNull,
         pageCount: 1,
         deletedAt: new Date(),

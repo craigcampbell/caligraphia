@@ -146,6 +146,9 @@ model Post {
   // Photo postcards (format="photocard"): finalImageUrl is the photo front,
   // backImageUrl is the rendered handwritten note on the back (flippable).
   backImageUrl       String?   @map("back_image_url")
+  // Optional self-recorded voice postscript (a spoken note read alongside the letter).
+  voiceUrl           String?   @map("voice_url")
+  voiceDurationMs    Int?      @map("voice_duration_ms")
   envelopeData       Json?     @map("envelope_data")
   signatureData      Json?     @map("signature_data")
   stampCount         Int       @default(0) @map("stamp_count")
