@@ -86,12 +86,15 @@ export default async function ProfilePage({ params }: { params: Promise<{ userna
       </header>
       <div className="up-hero">
         <div className="up-avatar">
-          <span>{user.username[0]?.toUpperCase()}</span>
+          {user.nomDePlume ? (
+            // nomDePlume is the writer's uploaded avatar image URL.
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={user.nomDePlume} alt={user.username} />
+          ) : (
+            <span>{user.username[0]?.toUpperCase()}</span>
+          )}
         </div>
         <h1 className="up-name">{user.username}</h1>
-        {user.nomDePlume ? (
-          <p className="up-pen">writing as {user.nomDePlume}</p>
-        ) : null}
         <p className="up-tag">handwritten letters on Caligraphia</p>
       </div>
 
@@ -132,7 +135,6 @@ function ProfileStyles() {
         background: #ece0cc; display: flex; align-items: center; justify-content: center; font-size: 30px; font-weight: 700; color: #8b6914; }
       .up-avatar img { width: 100%; height: 100%; object-fit: cover; }
       .up-name { font-size: 26px; color: #2c2416; margin: 0; }
-      .up-pen { color: #6b5640; margin: 4px 0 0; }
       .up-tag { color: #8c7a60; font-style: italic; margin: 4px 0 0; }
       .up-grid { columns: 4 220px; column-gap: 14px; }
       .up-card { display: inline-block; width: 100%; margin: 0 0 14px; break-inside: avoid; border-radius: 10px; overflow: hidden;
