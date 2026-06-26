@@ -21,6 +21,7 @@ import {
   isNearBottom,
   isNearBlankPage,
 } from "@/lib/page-fill";
+import { drawPracticeGuide } from "@/lib/practice-paper";
 
 const DEFAULT_W = 2400;
 const DEFAULT_H = 3200;
@@ -63,9 +64,21 @@ interface Props {
   // When set, this image becomes the canvas backdrop instead of paper — used by
   // "write back on the same sheet" so you draw directly over the original letter.
   backgroundImageUrl?: string;
+  // Writing-practice mode: the paper becomes a guide-ruled sheet with a faint
+  // traceable phrase (guideText). There's no letter to send — the action row
+  // becomes Clear / New phrase / Done, and the ink-drying gate is skipped.
+  practiceMode?: boolean;
+  guideText?: string;
+  onShufflePhrase?: () => void;
 }
 
-function drawPaper(ctx: CanvasRenderingContext2D, paper: string, w: number, h: number) {
+function drawPaper(ctx: CanvasRenderingContext2D, paper: string, w: number, h: number, guideText?: string) {
+  // Practice sheet: guide rules + a faint traceable phrase (drawn elsewhere).
+  if (paper === "practice") {
+    drawPracticeGuide(ctx, w, h, guideText);
+    return;
+  }
+
   const preset = PAPER_PRESETS.find((p) => p.id === paper) || PAPER_PRESETS[0];
   ctx.fillStyle = preset.bg;
   ctx.fillRect(0, 0, w, h);
@@ -132,6 +145,9 @@ export function CanvasDraw({
   submitLabel,
   maxPages = 1,
   backgroundImageUrl,
+  practiceMode = false,
+  guideText,
+  onShufflePhrase,
 }: Props) {
   const inkScale = canvasW / REFERENCE_WIDTH;
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -144,7 +160,10 @@ export function CanvasDraw({
     (() => { const h = new Date().getHours(); return (h >= 2 && h < 4) ? "#e8e8f0" : INK_COLORS[0]; })()
   );
   const [paper, setPaper] = useState<string>(
-    (() => { const h = new Date().getHours(); return (h >= 2 && h < 4) ? "midnight" : "ruled"; })()
+    (() => {
+      if (practiceMode) return "practice";
+      const h = new Date().getHours(); return (h >= 2 && h < 4) ? "midnight" : "ruled";
+    })()
   );
   // Custom stationery: the user's + public paper designs, and the currently
   // selected one's image (used as the canvas background when paper="custom:…").
@@ -231,7 +250,9 @@ export function CanvasDraw({
     resize();
     window.addEventListener("resize", resize);
     return () => { window.removeEventListener("resize", resize); if (timerRef.current) clearInterval(timerRef.current); };
-  }, [paper, inkStyle]);
+    // guideText is included so a resize after a phrase shuffle repaints the
+    // current phrase, not the one captured when the listener was attached.
+  }, [paper, inkStyle, guideText]);
 
   // Mirror zoom/pan into refs so the high-frequency wheel/pinch handlers read
   // current values without waiting on a React re-render.
@@ -304,15 +325,81 @@ export function CanvasDraw({
     return () => vp.removeEventListener("wheel", onWheel);
   }, []);
 
+  // Tablet hardening: stop the OS double-tap / selection callout — the
+  // copy / look-up / translate bubble that pops when you double-tap to, say,
+  // dot an "i" — and iOS pinch *gesture* events, from ever firing on the
+  // drawing surface.
+  //   - CSS (touch-action:none + inherited user-select:none + -webkit-touch-callout:none)
+  //     is the baseline, but WebKit's gesture layer can surface the callout
+  //     before CSS suppresses it, and on iOS `dblclick` doesn't fire for touch.
+  //   - So we also preventDefault the native selection/gesture events AND gate
+  //     the second tap of a finger double-tap at the touch level (the actual
+  //     trigger for the callout/zoom), which is the part dblclick can't catch.
+  // Drawing is untouched (it runs on pointer events, which these don't cancel),
+  // and two-finger pinch is our own pointer-based gesture, not the native one;
+  // the tap-gate ignores multi-touch and never blocks the ink (the dot is drawn
+  // from pointer events, not the touch default).
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const vp = viewportRef.current;
+    if (!canvas || !vp) return;
+    const stop = (e: Event) => e.preventDefault();
+    const opts: AddEventListenerOptions = { passive: false };
+    const targets = [canvas, vp];
+    const types = ["selectstart", "dblclick", "gesturestart", "gesturechange", "gestureend"];
+    for (const t of targets) for (const ty of types) t.addEventListener(ty, stop, opts);
+
+    // Kill the second tap of a finger double-tap (the callout/zoom trigger).
+    // Attached to the viewport ONLY — touchend bubbles up from the canvas, so
+    // one listener sees every tap exactly once (no double-counting).
+    let lastTap = 0, lastX = 0, lastY = 0;
+    const onTouchEnd = (e: TouchEvent) => {
+      if (e.touches.length > 0) return; // still a multi-finger gesture
+      const t = e.changedTouches[0];
+      if (!t) return;
+      const now = e.timeStamp;
+      if (now - lastTap < 320 && Math.hypot(t.clientX - lastX, t.clientY - lastY) < 40) {
+        e.preventDefault();
+      }
+      lastTap = now; lastX = t.clientX; lastY = t.clientY;
+    };
+    vp.addEventListener("touchend", onTouchEnd, opts);
+
+    return () => {
+      for (const t of targets) for (const ty of types) t.removeEventListener(ty, stop, opts);
+      vp.removeEventListener("touchend", onTouchEnd, opts);
+    };
+  }, []);
+
   const redraw = (ctx: CanvasRenderingContext2D) => {
     if (bgImageRef.current) {
       ctx.drawImage(bgImageRef.current, 0, 0, canvasW, canvasH);
     } else {
-      drawPaper(ctx, paper, canvasW, canvasH);
+      drawPaper(ctx, paper, canvasW, canvasH, guideText);
     }
     reseed(DEFAULT_INK_SEED);
     renderStrokes(ctx, strokesRef.current, inkStyle, canvasW, canvasH);
   };
+
+  // Wipe the current sheet's strokes back to a clean page (practice "Clear",
+  // and used when shuffling to a new phrase so each phrase starts fresh).
+  const clearSheet = () => {
+    strokesRef.current = [];
+    strokeStartsRef.current = [];
+    setStrokeCount(0);
+    lastPtRef.current = null;
+    smoothedRef.current = null;
+    const ctx = ctxRef.current;
+    if (ctx) redraw(ctx);
+  };
+
+  // Practice: a new phrase means a fresh sheet (repaint the new guide + clear
+  // strokes). On first mount the sheet is already empty, so this is a no-op.
+  useEffect(() => {
+    if (!practiceMode) return;
+    clearSheet();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [guideText, practiceMode]);
 
   // Load the canvas background — the on-sheet image (photo postcards, via prop)
   // or the selected custom stationery — then repaint. No background → paper texture.
@@ -442,6 +529,7 @@ export function CanvasDraw({
   };
 
   const startTimer = () => {
+    if (practiceMode) return; // no ink-drying gate when practicing
     if (timerRef.current) return;
     setHint("Let the ink flow...");
     timerRef.current = setInterval(() => {
@@ -839,14 +927,16 @@ export function CanvasDraw({
 
         <div className="toolbar-spacer" />
 
-        <div className="ink-level-wrap" title={canSubmit ? "Ready to send" : (hint || "Ink still flowing...")}>
-          <svg width="16" height="22" viewBox="0 0 18 24" className="ink-icon" aria-hidden="true">
-            <rect x="3" y="2" width="12" height="20" rx="2" fill="none" stroke="#8c7a60" strokeWidth="1.2" opacity="0.5"/>
-            <rect x="6" y="0" width="6" height="3" rx="1" fill="none" stroke="#8c7a60" strokeWidth="1" opacity="0.4"/>
-            <rect x="4" y={4 + (1 - Math.min(elapsed / minDrawTimeMs, 1)) * 16} width="10" height={Math.min(elapsed / minDrawTimeMs, 1) * 16}
-              rx="1" fill={canSubmit ? "#27ae60" : selectedColor} opacity={canSubmit ? 0.8 : 0.6}/>
-          </svg>
-        </div>
+        {!practiceMode && (
+          <div className="ink-level-wrap" title={canSubmit ? "Ready to send" : (hint || "Ink still flowing...")}>
+            <svg width="16" height="22" viewBox="0 0 18 24" className="ink-icon" aria-hidden="true">
+              <rect x="3" y="2" width="12" height="20" rx="2" fill="none" stroke="#8c7a60" strokeWidth="1.2" opacity="0.5"/>
+              <rect x="6" y="0" width="6" height="3" rx="1" fill="none" stroke="#8c7a60" strokeWidth="1" opacity="0.4"/>
+              <rect x="4" y={4 + (1 - Math.min(elapsed / minDrawTimeMs, 1)) * 16} width="10" height={Math.min(elapsed / minDrawTimeMs, 1) * 16}
+                rx="1" fill={canSubmit ? "#27ae60" : selectedColor} opacity={canSubmit ? 0.8 : 0.6}/>
+            </svg>
+          </div>
+        )}
 
         <button className="more-btn" onClick={() => setPaletteOpen(true)} title="Palette — colours, size, pens, paper" aria-label="Open palette">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>
@@ -892,6 +982,7 @@ export function CanvasDraw({
               </div>
             </div>
 
+            {!practiceMode && (
             <div className="palette-section">
               <span className="palette-label">Paper</span>
               <div className="paper-chooser">
@@ -927,6 +1018,7 @@ export function CanvasDraw({
               <div className="paper-make-note">Make your own from a photo — 20 stamps.</div>
               {paperMsg && <div className="paper-msg">{paperMsg}</div>}
             </div>
+            )}
 
             <div className="palette-section">
               <span className="palette-label">Extras</span>
@@ -1016,15 +1108,30 @@ export function CanvasDraw({
         </div>
       )}
 
-      <div className="canvas-actions">
-        <button onClick={onCancel} className="btn-cancel">Discard</button>
-        <button onClick={handleUndo} className="btn-undo" disabled={strokeCount === 0} title="Undo last stroke">
-          &#8630; Undo stroke
-        </button>
-        <button onClick={handleSubmit} className={`btn-submit ${canSubmit ? "ready" : "disabled"}`} disabled={!canSubmit}>
-          {canSubmit ? (submitLabel || "Send Your Letter") : "Ink still drying..."}
-        </button>
-      </div>
+      {practiceMode ? (
+        <div className="canvas-actions practice-actions">
+          <button onClick={onCancel} className="btn-cancel">Done</button>
+          <button onClick={handleUndo} className="btn-undo" disabled={strokeCount === 0} title="Undo last stroke">
+            &#8630; Undo
+          </button>
+          <button onClick={clearSheet} className="btn-undo" disabled={strokeCount === 0} title="Clear the sheet">
+            Clear
+          </button>
+          <button onClick={() => onShufflePhrase?.()} className="btn-submit ready" title="Practice a new phrase">
+            New phrase
+          </button>
+        </div>
+      ) : (
+        <div className="canvas-actions">
+          <button onClick={onCancel} className="btn-cancel">Discard</button>
+          <button onClick={handleUndo} className="btn-undo" disabled={strokeCount === 0} title="Undo last stroke">
+            &#8630; Undo stroke
+          </button>
+          <button onClick={handleSubmit} className={`btn-submit ${canSubmit ? "ready" : "disabled"}`} disabled={!canSubmit}>
+            {canSubmit ? (submitLabel || "Send Your Letter") : "Ink still drying..."}
+          </button>
+        </div>
+      )}
 
       <style>{`
         .canvas-shell {
@@ -1186,11 +1293,16 @@ export function CanvasDraw({
           overflow: hidden; border: 1px solid #d8d0c0; border-radius: 6px;
           background: #e7e1d4; touch-action: none;
           box-shadow: inset 0 2px 14px rgba(80,40,20,0.08);
+          /* No tap flash, no selection callout on the drawing surface. */
+          user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
+          -webkit-tap-highlight-color: transparent;
         }
         .draw-canvas {
           position: absolute; top: 0; left: 0;
           box-shadow: 0 2px 20px rgba(0,0,0,0.10), 0 1px 4px rgba(0,0,0,0.05);
           will-change: transform;
+          user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
+          -webkit-tap-highlight-color: transparent;
         }
         .zoom-controls {
           position: absolute; bottom: 12px; right: 12px; display: flex; align-items: center;
@@ -1255,7 +1367,13 @@ export function CanvasDraw({
           .size-range { width: 72px; }
           .canvas-viewport { height: 64vh; }
           .canvas-actions { gap: 8px; width: 100%; padding-bottom: 24px; }
-          .btn-cancel, .btn-undo, .btn-submit { padding: 12px 10px; font-size: 14px; flex: 1; }
+          .btn-cancel, .btn-undo, .btn-submit { padding: 12px 10px; font-size: 14px; flex: 1; white-space: nowrap; }
+          /* Practice has four buttons — let them wrap to a 2x2 grid on narrow
+             phones instead of cramming/wrapping their labels. */
+          .practice-actions { flex-wrap: wrap; }
+          .practice-actions .btn-cancel,
+          .practice-actions .btn-undo,
+          .practice-actions .btn-submit { min-width: 44%; }
         }
       `}</style>
     </div>

@@ -15,6 +15,7 @@ export default function robots(): MetadataRoute.Robots {
           "/inbox",
           "/post/",
           "/post/new",
+          "/practice",
           "/stamps",
           "/board",
           "/dead-letters",

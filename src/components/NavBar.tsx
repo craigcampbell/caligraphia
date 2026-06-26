@@ -53,6 +53,7 @@ export function NavBar() {
               <PencilIcon size={14} />Pen a Letter
             </Link>
             <Link href="/post/new?mode=draw" className="nav-link">Doodle</Link>
+            <Link href="/practice" className="nav-link" title="Warm up your hand — guide lines and a phrase to trace">Practice</Link>
             <Link href="/inbox" className="nav-link">
               <EnvelopeIcon size={14} />Inbox
             </Link>
