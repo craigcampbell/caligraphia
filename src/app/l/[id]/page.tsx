@@ -91,7 +91,7 @@ export default async function PublicLetterPage({ params }: { params: Promise<{ i
 
       <main className="pl-card">
         <div className="pl-by">
-          A letter by <strong>{post.user.username}</strong>
+          A letter by <Link href={`/u/${post.user.username}`} className="pl-author"><strong>{post.user.username}</strong></Link>
         </div>
         {hasImage ? (
           // eslint-disable-next-line @next/next/no-img-element
@@ -135,6 +135,8 @@ function PublicLetterStyles() {
       .pl-signin { color: #8a5a2b; text-decoration: none; font-size: 14px; }
       .pl-card { background: #fffdf8; border: 1px solid #e6dcc6; border-radius: 14px; padding: 18px; box-shadow: 0 8px 30px rgba(0,0,0,0.06); }
       .pl-by { color: #6b5640; font-size: 14px; margin-bottom: 12px; }
+      .pl-author { color: #6b5640; text-decoration: none; }
+      .pl-author:hover { color: #8a5a2b; text-decoration: underline; }
       .pl-img { width: 100%; height: auto; border-radius: 8px; display: block; background: #fff; }
       .pl-noimg { padding: 60px; text-align: center; color: #b3a78f; }
       .pl-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
