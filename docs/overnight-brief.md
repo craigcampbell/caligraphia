@@ -39,6 +39,7 @@ The house stays private. Only what a member *chooses* to show is ever public.
 | 5 | **Public writer profiles** | `/u/<username>` | A shareable page of a member's showcased letters. Perfect for an IG/X bio link. |
 | 6 | **Public waitlist** | landing page + `/admin/waitlist` | Non-invited visitors leave an email; you invite them when ready. |
 | 7 | **Daily prompt on the landing** | landing hero | Today's prompt now shows publicly, so the front page changes every day. |
+| 8 | **Cross-linked public gallery** | `/explore` cards | Image → the letter, byline → the writer's profile. `explore ↔ /u/ ↔ /l/` now interlink for discovery + SEO. |
 
 (These join the work from earlier in the session: photo postcards, custom
 stationery, the scarce stamp economy + Stripe scaffolding, and the admin
@@ -133,8 +134,11 @@ These are **built or designed but dormant** — they need a key or a call from y
 
 1. **Add the Stripe keys** → instantly turns on stamp sales (lowest effort, real revenue).
 2. **Pick Lob or PostGrid** → I build print-and-mail, your highest-value feature.
-3. **Showcase 5–10 of your own best letters** → so `/explore` and your `/u/` profile
-   aren't empty when you start sharing the link around.
+3. **Showcase 5–10 of your own best letters** → I verified `/explore` is currently
+   **empty** (nothing is public until someone opts in — that's the consent design
+   working as intended). It needs seeding before the link is worth sharing. Open any
+   of your letters → hit **Showcase**. This is the one thing only you can do, and it's
+   what activates everything else I built tonight.
 4. **Share your profile link** (`caligraphia.com/u/<you>`) in a couple of places →
    the funnel is built; it just needs its first push.
 5. Then we revisit AdSense / supporter tier with actual traffic data.
