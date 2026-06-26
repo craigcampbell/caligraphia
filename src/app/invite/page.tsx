@@ -100,6 +100,7 @@ function InviteContent() {
                   : `${remaining} invitation${remaining === 1 ? "" : "s"} left this week`}
               </p>
             )}
+            <p className="inv-reward">&#9733; When your friend writes their first letter, you&apos;ll earn 15 stamps.</p>
 
             {!outOfInvites && (
               <form onSubmit={handleContinue} className="inv-form">
@@ -183,7 +184,8 @@ function InviteContent() {
         .inv-mark { font-size: 44px; color: #1a1a1a; margin-bottom: 4px; }
         .inv-title { font-size: 26px; font-weight: 700; color: #1a1a1a; margin-bottom: 8px; }
         .inv-sub { color: #6b5c40; font-size: 15px; line-height: 1.5; margin-bottom: 12px; }
-        .inv-remaining { font-size: 13px; color: #8b6914; font-style: italic; margin-bottom: 20px; }
+        .inv-remaining { font-size: 13px; color: #8b6914; font-style: italic; margin-bottom: 8px; }
+        .inv-reward { font-size: 13px; color: #5a7a4a; margin-bottom: 20px; }
         .inv-form { display: flex; flex-direction: column; gap: 12px; text-align: left; }
         .inv-label { font-size: 13px; font-weight: 500; color: #6b5c40; }
         .inv-input {

@@ -17,6 +17,7 @@ import { validateCanvasPost, validateNativeCanvasPost, validateMultiPageCanvasPo
 import { rateLimitPostCreation } from "@/lib/rate-limit";
 import { groupHashtagLiterals } from "@/lib/tags";
 import { attachLetterToExchange } from "@/lib/exchange";
+import { rewardReferralIfFirstPost } from "@/lib/referrals";
 import { serializePost, serializePosts } from "@/lib/post-dto";
 import { v4 as uuidv4 } from "uuid";
 
@@ -637,4 +638,9 @@ async function giveStampReward(userId: string) {
     // scarce — you earn them when people stamp your letters. This just hands out
     // the collectible "Standard Postage" keepsake.
   });
+
+  // If this is their first letter and they were invited, reward the inviter.
+  await rewardReferralIfFirstPost(userId).catch((e) =>
+    console.error("referral reward failed:", e)
+  );
 }
