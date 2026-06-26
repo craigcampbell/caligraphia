@@ -14,10 +14,14 @@ interface UserData {
   bannedAt: string | null;
   banReason: string | null;
   bannedByAdmin: { username: string } | null;
+  stampBalance: number;
+  totalStampsEarned: number;
   _count: { posts: number; warnings: number };
   posts: { id: string; postType: string; createdAt: string; deletedAt: string | null; isPrivate: boolean; recipientId: string | null }[];
   warnings: { id: string; reason: string; createdAt: string; admin: { username: string } | null }[];
   reportsAgainst: { id: string; reason: string; note: string | null; status: string; createdAt: string }[];
+  stampPurchases: { id: string; packId: string; stamps: number; cents: number; status: string; createdAt: string }[];
+  stampAdjustments: { id: string; amount: number; kind: string; reason: string | null; createdAt: string }[];
 }
 
 export default function UserDetail({ userId }: { userId: string }) {
@@ -27,6 +31,7 @@ export default function UserDetail({ userId }: { userId: string }) {
   const [loading, setLoading] = useState(true);
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
+  const [compAmount, setCompAmount] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -94,6 +99,67 @@ export default function UserDetail({ userId }: { userId: string }) {
           {u.banReason && <div style={{ marginTop: 6 }}>Reason: {u.banReason}</div>}
         </div>
       )}
+
+      <div className="adm-card">
+        <h3 style={{ marginTop: 0 }}>Stamps</h3>
+        <p className="adm-sub" style={{ marginTop: 0 }}>
+          Balance <strong>{u.stampBalance}</strong> · {u.totalStampsEarned} earned lifetime
+        </p>
+        <label className="adm-label">Comp / adjust (use a negative number to remove)</label>
+        <div className="adm-row">
+          <input
+            className="adm-input"
+            type="number"
+            value={compAmount}
+            onChange={(e) => setCompAmount(e.target.value)}
+            placeholder="e.g. 50"
+            style={{ maxWidth: 140 }}
+          />
+          <button
+            className="adm-btn primary"
+            disabled={busy || !compAmount || Number(compAmount) === 0}
+            onClick={async () => {
+              const amount = Math.trunc(Number(compAmount));
+              if (!amount) return;
+              await doAction(
+                `/admin/api/users/${u.id}/comp-stamps`,
+                { amount, reason: reason || undefined },
+                `${amount > 0 ? "Gave" : "Removed"} ${Math.abs(amount)} stamps.`
+              );
+              setCompAmount("");
+            }}
+          >
+            Apply
+          </button>
+        </div>
+        {(u.stampPurchases.length > 0 || u.stampAdjustments.length > 0) && (
+          <table className="adm-table" style={{ marginTop: 14 }}>
+            <tbody>
+              {u.stampPurchases.map((p) => (
+                <tr key={p.id}>
+                  <td>Bought {p.stamps} stamps (${(p.cents / 100).toFixed(2)})</td>
+                  <td>
+                    <span className={`adm-badge ${p.status === "refunded" ? "bad" : p.status === "completed" ? "good" : ""}`}>
+                      {p.status}
+                    </span>
+                  </td>
+                  <td className="adm-muted" style={{ fontSize: 12 }}>{formatDateTime(p.createdAt)}</td>
+                </tr>
+              ))}
+              {u.stampAdjustments.map((a) => (
+                <tr key={a.id}>
+                  <td>
+                    {a.amount >= 0 ? "+" : ""}{a.amount} stamps · {a.kind}
+                    {a.reason ? ` — ${a.reason}` : ""}
+                  </td>
+                  <td />
+                  <td className="adm-muted" style={{ fontSize: 12 }}>{formatDateTime(a.createdAt)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
 
       <div className="adm-card">
         <h3 style={{ marginTop: 0 }}>Moderation</h3>

@@ -26,3 +26,11 @@ export function getStripe(): Stripe | null {
   if (!_stripe) _stripe = new Stripe(key);
   return _stripe;
 }
+
+// Refund the payment behind a completed Checkout session.
+export async function refundCheckoutSession(stripe: Stripe, stripeSessionId: string): Promise<void> {
+  const cs = await stripe.checkout.sessions.retrieve(stripeSessionId);
+  const pi = typeof cs.payment_intent === "string" ? cs.payment_intent : cs.payment_intent?.id;
+  if (!pi) throw new Error("No payment found to refund");
+  await stripe.refunds.create({ payment_intent: pi });
+}

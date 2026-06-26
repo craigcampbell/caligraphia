@@ -54,8 +54,27 @@ model User {
   reportsMade   Report[]   @relation("ReportsByUser")
   paperDesigns  PaperDesign[]
   stampPurchases StampPurchase[]
+  stampAdjustments StampAdjustment[]
 
   @@map("users")
+}
+
+// Admin-initiated stamp changes (comps and refund clawbacks) — the audit trail
+// for free/returned stamps. amount: positive = granted, negative = removed.
+model StampAdjustment {
+  id         String   @id @default(uuid()) @db.Uuid
+  userId     String   @map("user_id") @db.Uuid
+  adminId    String?  @map("admin_id") @db.Uuid
+  amount     Int
+  kind       String   // comp | refund_clawback
+  reason     String?
+  purchaseId String?  @map("purchase_id") @db.Uuid
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@map("stamp_adjustments")
 }
 
 // A real-money purchase of stamp currency via Stripe Checkout. Credited to the
@@ -67,9 +86,10 @@ model StampPurchase {
   stamps          Int
   cents           Int
   stripeSessionId String    @map("stripe_session_id")
-  status          String    @default("pending") // pending | completed
+  status          String    @default("pending") // pending | completed | refunded
   createdAt       DateTime  @default(now()) @map("created_at")
   completedAt     DateTime? @map("completed_at")
+  refundedAt      DateTime? @map("refunded_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 

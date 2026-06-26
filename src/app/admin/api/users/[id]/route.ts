@@ -22,8 +22,20 @@ export const GET = withAdmin(async (_req, { params }) => {
       createdAt: true,
       bannedAt: true,
       banReason: true,
+      stampBalance: true,
+      totalStampsEarned: true,
       bannedByAdmin: { select: { username: true } },
       _count: { select: { posts: true, warnings: true } },
+      stampPurchases: {
+        orderBy: { createdAt: "desc" },
+        take: 10,
+        select: { id: true, packId: true, stamps: true, cents: true, status: true, createdAt: true },
+      },
+      stampAdjustments: {
+        orderBy: { createdAt: "desc" },
+        take: 10,
+        select: { id: true, amount: true, kind: true, reason: true, createdAt: true },
+      },
       posts: {
         orderBy: { createdAt: "desc" },
         take: 20,
